@@ -44,8 +44,7 @@ seed = m.AutoLog(15, m.LOG_PATH, m.LOG_TEXT_PATH)
 t = farm(seed, 0, 310, party=1, map_name="Ant Tunnel I")
 t = farm(seed, t + 60, 310, party=4, map_name="Wild Boar Land II", level=30)
 t = farm(seed, t + 60, 310, party=5, map_name="Wild Boar Land II", level=30)
-m.save_config({**m.DEFAULTS, "log_open": True, "pos": [60, 60], "hotkeys_on": False, "check_updates": False,
-               "share_runs": False})
+m.save_config({**m.DEFAULTS, "log_open": True, "pos": [60, 60], "hotkeys_on": False, "check_updates": False})
 
 root = m.tk.Tk()
 app = m.App(root, m.DigitTemplates.load())
@@ -171,7 +170,7 @@ check("every line is still as the overlay wrote it (notes don't break the seal)"
 
 # ---- the design: every size, every state, and awkward values never break the window
 root = m.tk.Tk()
-m.save_config({**m.DEFAULTS, "hotkeys_on": False, "check_updates": False, "share_runs": False, "pos": [60, 60]})
+m.save_config({**m.DEFAULTS, "hotkeys_on": False, "check_updates": False, "pos": [60, 60]})
 app = m.App(root, m.DigitTemplates.load())
 t, meso = app.tracker, app.meso
 sizes_ok, widths = True, {}

@@ -502,7 +502,8 @@ class MainView(tk.Frame):
                                size=12, weight="semibold", command=self._toggle_details, bg=bg)
         self.more_btn.grid(row=3, column=0, padx=g.px(SIDE), pady=pad(0, 4))
         self.details_open = details
-        self.details = Details(self, theme, ("% / hr", "Gained", "Current", "Mesos", "Mesos / 5 min"), bg)
+        self.details = Details(self, theme, ("% / hr", "% last 5 min", "% last 15 min", "% last 30 min",
+                                             "% last hour", "Gained", "Current", "Mesos", "Mesos / 5 min"), bg)
         self.details.grid(row=4, column=0, padx=g.px(SIDE), pady=pad(0, 8))
         if not details:
             self.details.grid_remove()
@@ -524,9 +525,6 @@ class MainView(tk.Frame):
         foot.columnconfigure(0, weight=1)
         self.logging = Toggle(foot, theme, "Log this run", True, cb["logging"], bg, alt="Not logging")
         self.logging.grid(row=0, column=0, sticky="w")
-        self.best_btn = Button(foot, theme, text="Best maps", icon="link", kind="ghost", height=30, radius=10, size=12,
-                               command=cb["best"], bg=bg)
-        self.best_btn.grid(row=0, column=1, sticky="e")
         self.message = Message(self, theme, bg)
         self.message.grid(row=7, column=0, padx=g.px(SIDE + 2), pady=pad(2, 14), sticky="we")
         self.foot_widgets = [self.tiles_row, self.more_btn, self.details, self.reset_btn, self.menu_btn, foot]

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.10-beta
+
+**New**
+- **% of a level gained over time:** Details now shows how much of a level you gained in the last 5 minutes, 15 minutes, 30 minutes and hour. Like "Last 5 min", only tracking time counts (not paused time). Until you've tracked that long, it shows what you've gained so far, marked "so far". A level-up counts each part as a % of its own level.
+
+**Changed**
+- **No website:** this copy doesn't connect to the original author's best-maps site. Sharing runs (and the first-start question about it), the Settings switch and the **Best maps** button are gone. 15-minute runs are still counted and saved in your log, only on your PC.
+- **Updates and bug reports** now go to this repository (guddevbaddev/Maple-Classic-Exp-Overlay) instead of the original one.
+
 ## 0.9.9-beta
 
 **New**

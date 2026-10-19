@@ -1,6 +1,8 @@
 <h1><img src="docs/icon.png" width="40" align="top"> Maple Classic Exp Overlay</h1>
 
-**A free EXP tracker for MapleStory Classic World.** A small window sits next to the game and shows how fast you're leveling and making mesos, and the [best maps for your class](https://maple-classic-exp-overlay.pages.dev).
+**A free EXP tracker for MapleStory Classic World.** A small window sits next to the game and shows how fast you're leveling and making mesos.
+
+This copy doesn't connect to the original author's best-maps website: it never shares your runs, and it has no **Best maps** button. The only time it goes online is the update check, which looks at this repository's releases.
 
 **[Download it here](../../releases/latest)** · [How to install](#how-to-install)
 
@@ -14,6 +16,7 @@
 
 - **EXP per hour**, for your whole session and for the last 5 minutes
 - **How long until your next level**, right under your EXP/hr (for example "Lv 31 in 36 min")
+- **How much of a level you gained** in the last 5, 15 and 30 minutes and the last hour (under **Details**). Paused time doesn't count. Until you've tracked that long, it shows what you've gained so far ("2.40% so far").
 - **Mesos per hour**, read from your inventory
 - **A log of every map you farm**: your EXP/hr and mesos/hr there, at which level and class, solo or in a party
 
@@ -24,7 +27,7 @@ You don't type anything in. It reads all of this from your game screen by itself
 You need Windows 10 or 11. It takes about 2 minutes, and you don't need to install anything else.
 
 1. Go to the **[download page](../../releases/latest)**.
-2. Under **Assets**, click the **Maple-Classic-Exp-Overlay-v….zip** file (for example `Maple-Classic-Exp-Overlay-v0.9.3-beta.zip`) to download it. Don't click "Source code": that's for programmers.
+2. Under **Assets**, click the **Maple-Classic-Exp-Overlay-v….zip** file (for example `Maple-Classic-Exp-Overlay-v0.9.10-beta.zip`) to download it. Don't click "Source code": that's for programmers.
 3. Find the zip in your Downloads folder. **Right-click it**, choose **Extract All...**, then click **Extract**. (Just double-clicking the zip isn't enough. It has to be extracted.)
 4. Open the new folder, then the **Maple Classic Exp Overlay** folder inside it.
 5. Double-click **Maple Classic Exp Overlay.exe**. It may show as just **Maple Classic Exp Overlay**, with a gold chart icon.
@@ -58,7 +61,6 @@ Within a few seconds it shows your level and how much EXP you have. The per-hour
 | **Don't log** | Keeps the current run out of the log, for example while you're testing a map or waiting for your party. Everything is still shown on screen. It turns itself off when you leave the map or stop getting EXP, so your next run is logged as usual. |
 | **Select area** | Lets you drag a box around the EXP numbers, if it ever can't find them. The button then turns into **Follow game**, which goes back to finding them by itself. |
 | **View capture** | Shows exactly what it read from your screen |
-| **Best maps** | Opens the [best-maps website](#best-maps-for-your-class), already showing maps for your level, party size and class |
 | **⚙** | Settings |
 | **>** | Opens the log |
 | **Compact** | A much smaller window with just EXP/hr, when you'll level, the last 5 minutes, mesos/hr and Start/Pause. The button then says **Full**, to bring everything back. Shift+4 or double-clicking the big number does the same. |
@@ -84,8 +86,8 @@ Click **>** at the top right of the overlay to open the log. It's the table on t
 - **Every 5 more minutes** it updates that line, so the numbers get more accurate the longer you farm.
 - **Time** shows how long a line is based on. It grows by 5 minutes with each update.
 - **Class** is read from the status bar (never your character's name). Different classes get separate lines.
-- **15-minute runs:** under the log it also counts toward 15 minutes of non-stop farming on one map with the same party size ("15-min run: 7 of 15 min"). A level-up doesn't stop it; a break, a new map or a new party size starts it over. Finished runs are saved separately and, if you said yes, shared with the [best-maps site](#best-maps-for-your-class).
-- **Greyed-out lines** were changed outside the overlay. Every line the overlay writes is sealed, so a line edited or added by hand is easy to spot, and it won't count toward the best-maps site. Deleting a line, or renaming a map in the overlay, is fine.
+- **15-minute runs:** under the log it also counts toward 15 minutes of non-stop farming on one map with the same party size ("15-min run: 7 of 15 min"). A level-up doesn't stop it; a break, a new map or a new party size starts it over. Finished runs are saved separately in your log file.
+- **Greyed-out lines** were changed outside the overlay. Every line the overlay writes is sealed, so a line edited or added by hand is easy to spot. Deleting a line, or renaming a map in the overlay, is fine.
 - **Taking a break restarts the 5-minute timer.** A break means no EXP for 15 seconds (you can change this in ⚙). Changing maps or party size restarts it too.
 - **Don't want a run logged?** Press **Don't log**. It switches back on its own when that run ends.
 - **Solo** means just you. **4ppl** means a party of 4.
@@ -95,7 +97,7 @@ Click **>** at the top right of the overlay to open the log. It's the table on t
   - **Rename map**, if it read the name wrong (it remembers the fix for next time)
   - **Delete entry**
 - **Playing in a party?** A map's party sizes on one day share one line (e.g. **4–5ppl ▸**), with the numbers over all that time. Click it to see a line for each party size.
-- **Notes:** click a line and write whatever you like about it in the box under the log: the party, the pots, the loot, why you left. A ✎ in the **Note** column marks the lines that have one. Notes save as you type, and **they only ever stay on your PC**, in your log file: they are never shared with the best-maps site (only the finished 15-minute runs are, and they have no notes). Renaming a map, updating the overlay, or farming more on a line keeps its note. Deleting a line deletes its note too, and asks you first.
+- **Notes:** click a line and write whatever you like about it in the box under the log: the party, the pots, the loot, why you left. A ✎ in the **Note** column marks the lines that have one. Notes save as you type, and **they only ever stay on your PC**, in your log file, and are never sent anywhere. Renaming a map, updating the overlay, or farming more on a line keeps its note. Deleting a line deletes its note too, and asks you first.
 - **Can't see a whole column?** Drag the lines between the column titles to make columns narrower or wider. While the log is open, you can also make the window bigger by dragging its edge. It remembers both.
 
 ## Settings (⚙)
@@ -106,22 +108,9 @@ Click **>** at the top right of the overlay to open the log. It's the table on t
 - **Hotkeys.** Turn them on or off, and change them. See [Hotkeys](#hotkeys).
 - **Always on top of other windows.** Keeps the overlay above the game. It's on by default.
 - **Check for updates when it starts.** On by default. See [Updates](#updates).
-- **Share my 15-minute runs.** See [Best maps for your class](#best-maps-for-your-class).
 - **Open data folder.** Opens the folder where your log and settings are saved.
 - **Check for updates.** Checks right now.
 - **Report a bug.** See below.
-
-## Best maps for your class
-
-**[maple-classic-exp-overlay.pages.dev](https://maple-classic-exp-overlay.pages.dev)** shows which maps give the most EXP/hr and mesos/hr for your class and level, solo or in a party, from real hours farmed by players. Click **Best maps** at the top of the overlay to open it, already filled in for you.
-
-- **Enter your level and whether you're solo or in a party, then pick your class and path.** Paths are named after their 4th job, like Night Lord or Bishop, and include the jobs before it (Shadower is Bandits, Chief Bandits and Shadowers). Under Lv 30 you're still 1st job, so Path is greyed out and you see what every player of your class gets.
-- **Around your level** means within 5 levels either way, and parties of any size count together, so maps fill in sooner.
-
-- **It's built from 15-minute runs:** 15 minutes of non-stop farming on one map with the same party size. The log shows your progress ("15-min run: 7 of 15 min").
-- **Sharing is your choice.** The first time you start the overlay, it asks whether to share your runs. You can change it any time in ⚙.
-- **What's shared:** the map, your level, class and party size, the EXP and mesos you got, and a random ID for your copy of the overlay. Never your character's name.
-- **Keeping it honest:** the site uses the typical (median) run, counts each player once, leaves out runs far from what other players get there, and only ranks a map once 3 different players have farmed it (before that, it's shown greyed out as early data). Every player's typical run is a dot on the chart, so anything odd is easy to spot.
 
 ## How accurate is it?
 
@@ -161,7 +150,7 @@ Every version is tested against thousands of misread numbers, and against real s
 ## Is it safe? Is it allowed?
 
 - **It only looks at your screen, like a screen recorder.** It never touches the game's files or memory, and never presses keys or clicks for you.
-- **It only goes online for two things:** asking GitHub whether there's a newer version when it starts, and, only if you said yes, sharing your finished 15-minute runs (see above). Nothing about who you are is sent. Both can be turned off in ⚙. See [Privacy](#privacy).
+- **It only goes online for one thing:** asking GitHub whether there's a newer version when it starts. Nothing about who you are is sent, and it can be turned off in ⚙. See [Privacy](#privacy).
 - **Your antivirus might warn about it.** Antivirus programs sometimes flag small new programs by mistake. All of the code is public right here, so anyone can check what it does.
 - **It isn't made by or affiliated with Nexon.** Like any third-party tool, you use it at your own risk.
 
@@ -170,8 +159,7 @@ Every version is tested against thousands of misread numbers, and against real s
 - **Your log, your notes and your settings stay on your PC**, in `%APPDATA%\MapleEXP` (`~/Library/Application Support/MapleEXP` on a Mac). Notes are part of your log file: they are never sent anywhere, and the overlay's tests check that.
 - **A copy of your log is kept for each day** (the last 7 days), in the `backups` folder next to it, so if anything ever goes wrong there's a recent one. To go back to one, close the overlay and copy it over `exp_log.json`.
 - **The update check** (on by default, can be turned off in ⚙) asks GitHub for the newest version and what's new in it. Nothing about you is sent.
-- **15-minute runs are only shared if you said yes.** Each one is the map, when you farmed it, your level, class and party size, the EXP and mesos you got, the overlay's version, and a random ID made by your copy of the overlay. Never your character's name, your game account or your Windows user name.
-- **The website keeps** those runs. To limit spam it also keeps a scrambled code made from your internet address with a secret key, which changes every day and can't be turned back into the address. Your address itself isn't kept.
+- **Nothing from your log is ever sent anywhere**, including your 15-minute runs. There's no sharing and no website.
 - **Bug reports** only go to GitHub if you click Submit there yourself.
 
 ## Where the download comes from
@@ -186,24 +174,24 @@ Downloads on the [Releases page](../../releases) are built by GitHub from the co
 **Check your download** with the free [GitHub CLI](https://cli.github.com):
 
 ```
-gh attestation verify "the zip you downloaded.zip" --repo beanguri/Maple-Classic-Exp-Overlay
+gh attestation verify "the zip you downloaded.zip" --repo guddevbaddev/Maple-Classic-Exp-Overlay
 ```
 
 It tells you whether that exact file was built here, and from which commit. Or compare the file's SHA-256 with `SHA256SUMS.txt` on its release page (in PowerShell: `Get-FileHash "the zip you downloaded.zip"`).
 
 The same zip is also kept on the page of the build that made it (Actions, the run, the file at the bottom; you need a GitHub account to download it). Build runs since October 17 keep it exactly as it is, so the SHA-256 GitHub shows there is the zip's own, the same as on the release page.
 
-**About v0.9.6:** it was built by GitHub from its tag, before the package checks and attestations were added, so it has no attestation. Its SHA-256 is on its release page. [Its build's page](https://github.com/beanguri/Maple-Classic-Exp-Overlay/actions/runs/38631744258) keeps the zip inside an extra zip (GitHub does that unless told not to), so the SHA-256 shown *there* is for that outer zip and won't match: extract it once, and the zip inside has the release's SHA-256. That page keeps it until January 2027. Versions before v0.9.6 were built on my PC.
+**Versions up to v0.9.9-beta** were released by the original author, [beanguri](https://github.com/beanguri), from [their repository](https://github.com/beanguri/Maple-Classic-Exp-Overlay). This copy's releases start at v0.9.10-beta.
 
 ### Code signing policy
 
-Free code signing from [SignPath Foundation](https://signpath.org) is planned, so Windows stops warning about new downloads. Only builds made by the Build workflow from this repository are signed.
+This copy's downloads aren't code-signed yet, so Windows warns about them (see [How to install](#how-to-install)). The Build workflow can sign them with free code signing from [SignPath Foundation](https://signpath.org) once that's set up; only builds made by the Build workflow from this repository would be signed.
 
-- Committers and reviewers: [beanguri](https://github.com/beanguri)
-- Approvers: [beanguri](https://github.com/beanguri)
-- Privacy policy: see [Privacy](#privacy) above. In short: your log and notes stay on your PC, and the overlay only sends anything to another system if you turn on sharing your finished 15-minute runs (off until you say yes, and you can turn it off any time in Settings), or to check GitHub for a newer version (can be turned off too).
+- Committers and reviewers: [guddevbaddev](https://github.com/guddevbaddev)
+- Approvers: [guddevbaddev](https://github.com/guddevbaddev)
+- Privacy policy: see [Privacy](#privacy) above. In short: your log and notes stay on your PC, and the overlay only contacts another system to check GitHub for a newer version (can be turned off in Settings).
 
-**Credits:** the typeface is [Manrope](https://github.com/googlefonts/manrope) (SIL Open Font License, included as `assets/fonts/OFL.txt`).
+**Credits:** based on [Maple Classic Exp Overlay](https://github.com/beanguri/Maple-Classic-Exp-Overlay) by [beanguri](https://github.com/beanguri) (MIT License). The typeface is [Manrope](https://github.com/googlefonts/manrope) (SIL Open Font License, included as `assets/fonts/OFL.txt`).
 
 ## Updates
 
@@ -244,7 +232,7 @@ py -3 -m pip install -r requirements.txt pyinstaller
 py -3 build.py
 ```
 
-**Testing never shares anything:** with `MAPLE_EXP_DATA` set (it moves the data folder, which is how the tests keep away from your real log), the overlay refuses to send runs to the real site, so made-up test runs can't end up there. (Set `MAPLE_EXP_ALLOW_SHARE=1` only to test against a local copy of the server.)
+**Tests use their own data folder:** with `MAPLE_EXP_DATA` set, the overlay keeps its log and settings there, away from your real ones.
 
 **Run the tests:**
 
@@ -258,7 +246,7 @@ To build with exactly the packages the releases use: `py -3 -m pip install --req
 
 GitHub runs the logic tests on every push ([Tests workflow](.github/workflows/tests.yml)). The [Build workflow](.github/workflows/build.yml) builds the download on GitHub (Actions tab, **Build**, **Run workflow**), runs all the tests first, and signs the .exe once code signing is set up. Pushing a version tag also attests the zip and drafts the release with it; releases are only ever made that way.
 
-**The stats site** is in `server/`: a Cloudflare Pages site with a D1 database (free tier). The page is `server/public/`, the API is `server/src/index.js`. `npm --prefix server install`, then `npm --prefix server run dev` runs it locally, `py -3 server/test_server.py http://localhost:8787` tests it, and `npm --prefix server run deploy` puts it online.
+**`server/`** is the original author's best-maps website. This copy of the overlay doesn't use it.
 
 **How it reads the screen:**
 - It finds the `MapleStory.exe` window, then the EXP numbers (like `12,345 [12.34%]`) in the status bar.

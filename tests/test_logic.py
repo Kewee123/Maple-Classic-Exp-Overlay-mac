@@ -343,72 +343,19 @@ after = {x["map"]: x for x in json.loads((folder / "log.json").read_text(encodin
 check("odd notes are left exactly as they were when the log is saved for another reason",
       all("note" in after[f"Map {i}"] and after[f"Map {i}"]["note"] == n for i, n in enumerate(odd)))
 
-# what's shared with the stats site is never made from notes
+# notes stay in the log: runs never carry one, and nothing goes online but the update check
 log, path = new_log()
 farm(log, 0, 910, party=3)                                        # more than a 15-minute run
 log.set_note(log.entries, "MY-PRIVATE-NOTE do not share")
-sent = []
-real_urlopen = m.urllib.request.urlopen
-
-
-class _Reply:                                                     # what the stats site would answer
-    def __init__(self, data):
-        self.data = json.dumps(data).encode()
-
-    def read(self, _=None):
-        return self.data
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *_):
-        return False
-
-
-def capture(request, *a, **k):
-    sent.append((request.full_url, request.data))
-    return _Reply({"results": [{"started": r.get("started"), "ok": True} for r in log.runs]})
-
-
-os.environ["MAPLE_EXP_ALLOW_SHARE"] = "1"                  # (the network is stubbed here)
-m.urllib.request.urlopen = capture
-done = m.post_runs("0" * 16, log.unshared_runs())
-m.urllib.request.urlopen = real_urlopen
-os.environ.pop("MAPLE_EXP_ALLOW_SHARE")
-body = sent[0][1].decode() if sent else ""
-fields = {k for r in json.loads(body)["runs"] for k in r} if body else set()
-check(f"what's sent to the stats site has the run and no note ({sorted(fields)})",
-      len(sent) == 1 and "MY-PRIVATE-NOTE" not in body and "note" not in fields and len(json.loads(body)["runs"]) >= 1)
 check("runs never carry a note, even with notes on the log lines",
-      all("note" not in r for r in log.runs) and "MY-PRIVATE-NOTE" not in json.dumps(log.runs))
+      len(log.runs) >= 1 and all("note" not in r for r in log.runs) and "MY-PRIVATE-NOTE" not in json.dumps(log.runs))
 src = inspect.getsource(m)
-check("privacy guard: the overlay reaches the internet in exactly these places (a new one needs a look at what it sends)",
-      src.count("urlopen(") == 2 and src.count("webbrowser.open(") == 3 and "requests." not in src and "socket." not in src)
-check("what's sent never reads the log's lines, and the bug report never includes notes",
-      "entries" not in inspect.getsource(m.post_runs) and "note" not in inspect.getsource(m.post_runs).lower()
-      and "entries" not in inspect.getsource(m.check_for_update)
+check("privacy guard: the overlay reaches the internet only to check for updates (a new place needs a look at what it sends)",
+      src.count("urlopen(") == 1 and src.count("webbrowser.open(") == 2 and "requests." not in src and "socket." not in src
+      and "pages.dev" not in src)
+check("the update check never reads the log, and the bug report never includes notes",
+      "entries" not in inspect.getsource(m.check_for_update)
       and not any(w in inspect.getsource(m.App._report_text) for w in ("note_of", "notes_of", '"note"', "autolog.entries")))
-runs = [dict(r, note="SNEAKY") for r in log.runs]
-os.environ["MAPLE_EXP_ALLOW_SHARE"] = "1"
-m.urllib.request.urlopen = capture
-sent.clear()
-m.post_runs("0" * 16, runs)
-m.urllib.request.urlopen = real_urlopen
-os.environ.pop("MAPLE_EXP_ALLOW_SHARE")
-check("even a run that somehow had a note field wouldn't send it", "SNEAKY" not in sent[0][1].decode())
-
-# testing must never put made-up runs on the real site (it happened once, with a test launch)
-sent.clear()
-m.urllib.request.urlopen = capture
-try:
-    m.post_runs("0" * 16, log.runs)
-    blocked = False
-except RuntimeError:
-    blocked = True
-m.urllib.request.urlopen = real_urlopen
-check("while testing (MAPLE_EXP_DATA is set) nothing can be sent to the real site", blocked and not sent)
-check("no test fixture has sharing switched on (a launch on one would send its made-up runs)",
-      not any(json.loads(f.read_text(encoding="utf-8")).get("share_runs") for f in (Path(__file__).parent / "upgrade").glob("*/config.json")))
 
 # a copy of the log is kept for each day, so a recent one is always there
 folder = Path(tempfile.mkdtemp())
@@ -623,31 +570,6 @@ check(f"no log line or run is ever made of EXP lost (lines: {[e['exp'] for e in 
       [e["exp"] for e in log.entries] == [200] and log.runs == [])   # the 5-minute blocks after the loss
 
 
-class FakeResponse:
-    def __init__(self, data):
-        self.data = json.dumps(data).encode()
-
-    def read(self, _=None):
-        return self.data
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *_):
-        return False
-
-
-real_urlopen = m.urllib.request.urlopen
-os.environ["MAPLE_EXP_ALLOW_SHARE"] = "1"                  # (the network is stubbed here)
-m.urllib.request.urlopen = lambda *a, **k: FakeResponse({"results": [
-    {"started": "a", "ok": True}, {"started": "b", "ok": False, "why": "overlaps another run"},
-    {"started": "c", "ok": False, "why": "too many runs today", "retry": True}]})
-done = m.post_runs("0" * 16, [{"started": x} for x in "abc"])
-m.urllib.request.urlopen = real_urlopen
-os.environ.pop("MAPLE_EXP_ALLOW_SHARE")
-check(f"runs the site has, or turned down for good, aren't sent again; 'try tomorrow' ones are ({done})",
-      done == ["a", "b"])
-
 # ---- EXP tracking with noisy readings: misreads must never inflate the gains
 random.seed(1)
 reqs, worst = [54900, 63666, 73080], 0.0
@@ -750,6 +672,32 @@ s.start(clock[0])
 gains(s, 9.5)
 idle(s, 40)
 check("the pause time can be changed in Settings (60 s: a 40 s break doesn't pause)", s.exp.running)
+
+# ---- % of a level gained in the last 5, 15, 30 and 60 minutes (Lv 30 needs 95,700: 957 is 1%)
+tr = exp_tracker(9570, 10.0)
+for i in range(1, 3):
+    clock[0] += 60
+    read(tr, 9570 + 957 * i)
+check(f"early on, the 15-minute % is what was gained so far ({m.fmt_pct_gained(tr.pct_in_last(900), 900)})",
+      m.fmt_pct_gained(tr.pct_in_last(900), 900) == "2.00% so far")
+for i in range(3, 71):                                   # 1% a minute for 70 minutes
+    clock[0] += 60
+    read(tr, 9570 + 957 * i)
+got = [m.fmt_pct_gained(tr.pct_in_last(sec), sec) for sec, _ in m.PCT_WINDOWS]
+check(f"1% a minute is 5%, 15%, 30% and 60% over the last 5, 15, 30 and 60 min ({got})",
+      got == ["5.00%", "15.00%", "30.00%", "60.00%"])
+tr.pause()
+clock[0] += 600
+tr.start()
+check("a pause doesn't count toward the last 5 minutes",
+      m.fmt_pct_gained(tr.pct_in_last(300), 300) == "5.00%")
+check("before anything is tracked, there's no %", m.fmt_pct_gained(m.ExpTracker().pct_in_last(300), 300) == "\u2014")
+tr = exp_tracker(94743, 99.0)                            # 1% before Lv 31 (108,480)
+clock[0] += 60
+for e in (1084, 1084):                                   # levels up, 1% into Lv 31
+    tr.observe([(e, int(e / 108480 * 10000) / 100)], True)
+check(f"a level-up counts each part as a % of its own level ({tr.pct_gained:.2f}%)",
+      tr.levels == 1 and abs(tr.pct_gained - 2.0) < 0.01)
 
 print("\nALL PASSED" if not failures else f"\n{failures} FAILED")
 sys.exit(1 if failures else 0)

@@ -61,7 +61,7 @@ PLATFORM = create_platform()
 PLATFORM.setup_process()
 cv2.setNumThreads(1)
 
-VERSION = "0.9.9-beta"
+VERSION = "0.9.10-beta"
 WINDOW_TITLE = "Maple Classic Exp Overlay"    # the version is shown in Settings
 OLD_TITLES = ("Maple EXP/hr",)               # what versions before 0.9.3 were called
 
@@ -78,6 +78,8 @@ TEMPLATE_PATH = ASSETS / "digits.npz"
 ICON_PATH = ASSETS / "icon.ico"
 POLL_SECONDS = 1.5          # how often to read the EXP bar
 ROLLING_WINDOW = 300        # seconds used for the "last 5 min" rate
+PCT_WINDOWS = ((300, "% last 5 min"), (900, "% last 15 min"), (1800, "% last 30 min"),
+               (3600, "% last hour"))   # (seconds, name) of the "% of a level gained in the last ..." lines
 SEARCH_STRIP = 0.22         # bottom part of the game window searched for the EXP text
 LOG_PATH = DATA_DIR / "exp_log.json"
 LOG_TEXT_PATH = DATA_DIR / "exp_log.txt"
@@ -93,8 +95,7 @@ DEFAULTS = {"gap_seconds": 15, "transparency": 0, "topmost": True,
 # Settings > Size, in %: only these, so the window can't get too small to read or use.
 UI_SCALES = (60, 70, 80, 90, 100, 110, 125, 150, 175, 200)
 MAX_TRANSPARENCY = 40       # %: more and the window can fade out of sight, with Settings in it
-STATS_SITE = "https://maple-classic-exp-overlay.pages.dev"       # shared 15-minute runs (server/)
-GITHUB_REPO = "beanguri/Maple-Classic-Exp-Overlay"
+GITHUB_REPO = "guddevbaddev/Maple-Classic-Exp-Overlay"
 RELEASES_PAGE = f"https://github.com/{GITHUB_REPO}/releases/latest"
 LATEST_RELEASE_API = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
@@ -170,8 +171,7 @@ def load_config():
               "region": lambda v: isinstance(v, dict) and all(type(v.get(k)) is int and (
                   k in ("left", "top") or v[k] > 0) for k in ("left", "top", "width", "height")),
               "log_columns": lambda v: isinstance(v, dict), "log_columns_pt": lambda v: isinstance(v, dict),
-              "log_open": lambda v: type(v) is bool,
-              "share_runs": lambda v: type(v) is bool}       # missing: not asked yet
+              "log_open": lambda v: type(v) is bool}
     for key, ok in checks.items():
         if key in cfg and cfg[key] is not None and not ok(cfg[key]):
             del cfg[key]
@@ -212,8 +212,8 @@ def find_tesseract():
 
 # --------------------------------------------------------------------------- updates
 #
-# At start (unless turned off in Settings) it asks GitHub for the latest release. The only
-# other time it goes online is to share finished 15-minute runs, if the player agreed to that.
+# At start (unless turned off in Settings) it asks GitHub for the latest release. That's the
+# only time it goes online: nothing from the log is ever sent anywhere.
 
 def version_key(version):
     """'v0.9.1-beta' -> something to compare versions by. A full release beats its betas."""
@@ -246,25 +246,6 @@ def check_for_update(timeout=8):
     if version_key(tag) <= version_key(VERSION):
         return None
     return tag.lstrip("vV"), _plain_text(str(data.get("body") or ""))
-
-
-def post_runs(install, runs, timeout=15):
-    """Sends finished runs to the stats site (only if the player agreed to share).
-    Returns the start times of the runs it's done with: the ones the site has (now or from
-    before), and ones it turned down for good. Runs turned down only for today ("retry", too
-    many sent today) are left to be sent again later."""
-    if os.environ.get("MAPLE_EXP_DATA") and not os.environ.get("MAPLE_EXP_ALLOW_SHARE"):
-        # MAPLE_EXP_DATA moves the data folder, which only tests do. What they have in their logs is
-        # made up, and made-up runs must never reach the real site: so not while testing.
-        raise RuntimeError("sharing is off while testing (MAPLE_EXP_DATA is set)")
-    shared = ("date", "started", "map_read", "class", "level_start", "level_end", "party", "exp",
-              "seconds", "mesos", "mesos_seconds", "version", "seal")
-    body = json.dumps({"install": install, "runs": [{k: r.get(k) for k in shared} for r in runs]}).encode()
-    request = urllib.request.Request(f"{STATS_SITE}/api/runs", data=body, headers={
-        "content-type": "application/json", "User-Agent": f"MapleClassicExpOverlay/{VERSION}"})
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        data = json.loads(response.read(1_000_000).decode("utf-8"))
-    return [r.get("started") for r in data.get("results", []) if r.get("ok") or not r.get("retry")]
 
 
 # --------------------------------------------------------------------------- hotkeys
@@ -1558,6 +1539,8 @@ class ExpTracker:
         self.gained = 0
         self.levels = 0
         self.samples = deque()                # (elapsed, gained)
+        self.pct_gained = 0.0                 # % of a level gained, each gain as a % of its own level
+        self.pct_samples = deque()            # (elapsed, pct_gained), for the last hour
 
     def start(self):
         if not self.running:
@@ -1577,6 +1560,7 @@ class ExpTracker:
         self._accum, self._resumed = 0.0, None
         self.gained, self.levels, self.deaths = 0, 0, 0
         self.samples = deque()
+        self.pct_gained, self.pct_samples = 0.0, deque()
 
     def elapsed(self):
         if self.running:
@@ -1641,13 +1625,22 @@ class ExpTracker:
     def _consistent(self, e, p):
         return abs(e / self.req * 100 - p) <= 0.02 + 0.003 * p
 
-    def _add_gain(self, amount):
+    def _add_gain(self, amount, pct=None):
+        """`pct`: the gain as % of a level, when it isn't all on this level (a level-up)."""
         if self.running:
             self.gained += amount
             now = self.elapsed()
             self.samples.append((now, self.gained))
             while self.samples and now - self.samples[0][0] > ROLLING_WINDOW:
                 self.samples.popleft()
+            if pct is None:
+                pct = amount / self.req * 100 if self.req else 0.0
+            self.pct_gained += pct
+            self.pct_samples.append((now, self.pct_gained))
+            # Keep one sample from before the longest window: what was gained up to then.
+            longest = PCT_WINDOWS[-1][0]
+            while len(self.pct_samples) > 1 and self.pct_samples[1][0] <= now - longest:
+                self.pct_samples.popleft()
 
     # ---- main entry
     def observe(self, candidates, confident=False):
@@ -1790,7 +1783,8 @@ class ExpTracker:
         self._pending_lvl = self._pending = None
         if self.running:
             self.levels += 1
-        self._add_gain(self.req - self.exp + e)
+        new_req = nxt if need == 2 else self.req       # (the new level's EXP, or a close guess)
+        self._add_gain(self.req - self.exp + e, (self.req - self.exp) / self.req * 100 + e / new_req * 100)
         self.exp, self.pct = e, p
         self._prev_req = self.req
         if need == 2:                          # the new level's EXP is known: no relearning
@@ -1807,6 +1801,15 @@ class ExpTracker:
     def rate(self):
         t = self.elapsed()
         return self.gained / t * 3600 if t >= 10 else None
+
+    def pct_in_last(self, seconds):
+        """(% of a level gained in the last `seconds` of tracking, seconds that covers), or None
+        before there's anything to go on. It covers less than asked early in a session."""
+        now = self.elapsed()
+        if now < 10:
+            return None
+        before = next((g for t, g in reversed(self.pct_samples) if t <= now - seconds), 0.0)
+        return self.pct_gained - before, min(seconds, now)
 
     def rolling_rate(self):
         if len(self.samples) < 2:
@@ -2095,12 +2098,11 @@ NOTE_MAX = 4000     # characters in a note on a log line
 NOTE_MARK = "\u270e"            # shown in the log's Note column for lines that have one
 BACKUPS_KEPT = 7    # days of log backups kept (backups/ in the data folder)
 RUN_SECONDS = 900   # a run: 15 minutes of non-stop farming on one map, one party size
-                    # (until 0.9.4 a run was an hour; those are still shared as they are)
+                    # (until 0.9.4 a run was an hour; those are kept as they are)
 
 # Each line the tracker writes is sealed: a code worked out from its numbers. A line edited
 # (or added) by hand doesn't match its seal any more, so it's known not to be the tracker's
-# own. (Someone who digs into the program could still forge one, which is why anything
-# shared will also be checked against what other players get.)
+# own. (Someone who digs into the program could still forge one.)
 # (The old name stays in the key: changing it would unseal every log written so far.)
 _SEAL_KEY = hashlib.sha256(b"Maple EXP/hr log seal: keep this log honest").digest()
 _SEALED_LINE = ("date", "map_read", "level", "party", "class", "exp", "seconds", "mesos", "mesos_seconds")
@@ -2110,7 +2112,7 @@ _SEALED_RUN = ("date", "started", "map_read", "class", "level_start", "level_end
 
 class AutoLog:
     """EXP/hr and mesos/hr per day, map, level, class and party size, measured over 5-minute
-    stretches of non-stop EXP gain, plus 15-minute runs (shared with the stats site, if agreed).
+    stretches of non-stop EXP gain, plus 15-minute runs.
 
     A stretch starts with an EXP gain and is thrown away if no EXP comes in for `gap`
     seconds, or the map or party size changes. Each finished stretch is added to that day's
@@ -2181,7 +2183,7 @@ class AutoLog:
             self._keep_copy(f"reading the EXP log: left out {len(entries) - len(good)} damaged lines")
         self.entries = good
         self.aliases = {k: v for k, v in aliases.items() if isinstance(k, str) and isinstance(v, str)}
-        self.runs = [r for r in runs if isinstance(r, dict)]   # (only sealed ones are ever shared)
+        self.runs = [r for r in runs if isinstance(r, dict)]   # (finished 15-minute runs)
         if isinstance(data.get("install"), str) and re.fullmatch(r"[0-9a-f]{16}", data["install"]):
             self.install = data["install"]
         version = data.get("version", 1)
@@ -2324,17 +2326,6 @@ class AutoLog:
         return sum(1 for r in self.runs if r.get("date") == day and r.get("map") == map_name
                    and r.get("party") == party and r.get("class") == job and self.sealed(r, _SEALED_RUN))
 
-    def unshared_runs(self):
-        """Finished runs (exactly as the overlay saved them) not shared yet."""
-        return [r for r in self.runs if not r.get("shared") and self.sealed(r, _SEALED_RUN)][:50]
-
-    def mark_shared(self, started):
-        def apply():
-            for r in self.runs:
-                if r.get("started") in started:
-                    r["shared"] = True
-        self._change(apply)
-
     def seconds_left(self, now):
         return None if self.start is None else max(0.0, LOG_BLOCK - (now - self.start))
 
@@ -2436,8 +2427,7 @@ class AutoLog:
         sizes shown as one line). An empty note takes it off. Returns True if anything changed.
 
         A note only ever lives in this log file, on this PC. It isn't one of the sealed fields,
-        so a line stays as trusted as it was, and it's never part of a run: what's shared with
-        the stats site is made from the runs alone (see post_runs)."""
+        so a line stays as trusted as it was, and it's never part of a run."""
         keys = {self.key(e) for e in entries}
         text = clean_note(text)[:NOTE_MAX]
 
@@ -2527,6 +2517,15 @@ def fmt_eta(seconds):
     if minutes < 60:
         return f"{minutes} min"
     return f"{minutes // 60} h {minutes % 60:02d} min"
+
+
+def fmt_pct_gained(got, seconds):
+    """ExpTracker.pct_in_last(seconds) as shown: '1.24%', or '0.31% so far' while the session
+    is shorter than that."""
+    if got is None:
+        return "\u2014"
+    pct, covered = got
+    return f"{max(0.0, pct):.2f}%" + (" so far" if covered < seconds else "")
 
 
 def fmt_dur(seconds):
@@ -2624,7 +2623,6 @@ class App:
         self.note = None
         self.last_logged = None
         self.skip_log = False               # "Don't log" is on: this run isn't logged
-        self._sharing, self._next_share = False, 0.0       # sending runs to the site
         self.job = None                     # the class, from the status bar
         self.map_read = None                # the map name exactly as read
         self.found_at = None                # when the EXP bar was first read for this level
@@ -2693,7 +2691,6 @@ class App:
         root.after(500, self._refresh)
         if self.cfg["check_updates"]:
             self.check_updates()                       # only now, when it starts
-        root.after(1500, self._ask_to_share)           # (asked once, the first time)
 
     # ---- the main window
     def _build_view(self):
@@ -2704,7 +2701,7 @@ class App:
         self.theme = Theme(self.root, self._px_per_pt * 0.75, ASSETS / "fonts", self._own_fonts, PLATFORM.font)
         callbacks = dict(settings=self.open_settings, compact=lambda: self.set_compact(not self.compact),
                          log=self.toggle_log, start=self.toggle, reset=self.reset, logging=self._logging_clicked,
-                         best=self.open_best_maps, menu=self._open_menu, details=self._details_changed)
+                         menu=self._open_menu, details=self._details_changed)
         self.view = self.main = MainView(self.root, self.theme, callbacks, details=bool(self.cfg.get("details")))
         self.view.grid(row=0, column=0, sticky="n")
         if self.compact:
@@ -3064,7 +3061,7 @@ class App:
         if e:
             if self.autolog.edited(e):
                 self.log_hint.set("This line was changed outside the overlay (it no longer matches "
-                                  "the overlay's seal), so it won't count toward the best-maps site.")
+                                  "the overlay's seal).")
                 return
             runs = self.autolog.runs_done(e["map"], e.get("party"), e.get("class"), e["date"])
             hours = (f" Includes {runs} full {RUN_SECONDS // 60}-minute run{'s' * (runs != 1)} of non-stop farming."
@@ -3239,12 +3236,10 @@ class App:
         topmost = tk.BooleanVar(value=bool(self.cfg["topmost"]))
         self._switch(body, "Always on top of other windows", topmost).pack(anchor="w", pady=(px(14), 0))
 
-        self._section(body, "Updates and sharing")
+        self._section(body, "Updates")
         updates = tk.BooleanVar(value=bool(self.cfg["check_updates"]))
         self._switch(body, "Check for updates when it starts", updates).pack(anchor="w")
-        sharing = tk.BooleanVar(value=bool(self.cfg.get("share_runs")))
-        self._switch(body, f"Share my {RUN_SECONDS // 60}-minute runs, anonymously", sharing).pack(anchor="w", pady=(px(6), 0))
-        tk.Label(body, text="They feed the best-maps site. Your notes and log never leave this PC.", wraplength=wrap,
+        tk.Label(body, text="Your log and notes never leave this PC.", wraplength=wrap,
                  justify="left", **dim).pack(anchor="w", pady=(px(4), 0))
 
         def apply(*_):
@@ -3257,9 +3252,6 @@ class App:
             self.cfg["transparency"] = min(MAX_TRANSPARENCY, max(0, int(float(transparency.get()))))
             self.cfg["topmost"] = bool(topmost.get())
             self.cfg["check_updates"] = bool(updates.get())
-            if bool(sharing.get()) != bool(self.cfg.get("share_runs")):
-                self.cfg["share_runs"] = bool(sharing.get())
-                self.share_runs()
             self._apply_window_settings()
             w.attributes("-topmost", self.cfg["topmost"])
             scale = int(size.get().rstrip("%"))
@@ -3269,7 +3261,7 @@ class App:
                 self.root.after(60, self._reopen_settings)        # (drawn again at the new size)
             save_config(self.cfg)
 
-        for var in (gap, transparency, topmost, updates, sharing, size):
+        for var in (gap, transparency, topmost, updates, size):
             var.trace_add("write", apply)
         self._hotkey_settings(body)
         buttons = tk.Frame(body, bg=BG)
@@ -3446,44 +3438,6 @@ class App:
                 self.stop_evt.wait(max(0.1, POLL_SECONDS - (time.monotonic() - t0)))
             self.health.alive = False
 
-    # ---- sharing runs
-    def open_best_maps(self):
-        """The best-maps site, already showing the maps for this level, party size and class."""
-        ask = {k: v for k, v in (("level", self.level), ("party", self.party), ("job", self.job)) if v}
-        webbrowser.open(STATS_SITE + ("/?" + urllib.parse.urlencode(ask) if ask else ""))
-
-    def _ask_to_share(self):
-        if "share_runs" in self.cfg:
-            return
-        yes = messagebox.askyesno(
-            "Help other players pick maps?",
-            "Share your farming, so everyone can see which maps give the most EXP for their "
-            "class and level?\n\n"
-            f"Every {RUN_SECONDS // 60} minutes of non-stop farming is shared: the map, your level, "
-            "class and party size, and the EXP and mesos you got. Never your character's name.\n\n"
-            f"They're combined with other players' on {STATS_SITE.split('//')[1]}. You can change "
-            "this any time in Settings.", parent=self.root)
-        self.cfg["share_runs"] = bool(yes)
-        save_config(self.cfg)
-        self.share_runs()
-
-    def share_runs(self):
-        """Sends finished runs to the stats site in the background (if agreed to)."""
-        self._next_share = time.monotonic() + 1800
-        if not self.cfg.get("share_runs") or self._sharing:
-            return
-        runs = self.autolog.unshared_runs()
-        if not runs:
-            return
-        self._sharing, install = True, self.autolog.install
-
-        def work():
-            try:
-                self.q.put(("shared", post_runs(install, runs)))
-            except Exception:
-                self.q.put(("shared", None))           # offline or the site is down: later
-        threading.Thread(target=work, daemon=True).start()
-
     # ---- updates
     def check_updates(self, manual=False):
         """Asks GitHub for a newer version in the background; the answer comes via _pump."""
@@ -3568,10 +3522,6 @@ class App:
                     self._show_update(*payload)
                 elif kind == "hotkey":
                     self._hotkey(payload)
-                elif kind == "shared":
-                    self._sharing = False
-                    if payload:
-                        self.autolog.mark_shared(payload)
                 else:
                     self._handle(payload)
         except queue.Empty:
@@ -3670,10 +3620,7 @@ class App:
             return
         m = self.meso
         mesos = (m.gained, m.seen_at) if m.value is not None and now - m.seen_at <= 30 else None
-        runs = len(self.autolog.runs)
         entry = self.autolog.tick(now, self.map_name, self.level, self.party, mesos, self.job, self.map_read)
-        if len(self.autolog.runs) > runs:
-            self.share_runs()                          # a run just finished
         if entry:
             self.last_logged = now
             self._fill_log()
@@ -3731,6 +3678,7 @@ class App:
             mesos=fmt_num(m.per_hour(el)),
             tiles={"Last 5 min": fmt_num(rolling), "Mesos / hr": fmt_num(m.per_hour(el)), "Elapsed": fmt_dur(el)},
             details={"% / hr": f"{rate / t.req * 100:.2f}%" if rate and t.req else "\u2014",
+                     **{name: fmt_pct_gained(t.pct_in_last(sec), sec) for sec, name in PCT_WINDOWS},
                      "Gained": f"{fmt_short(t.gained)}{f'  (+{t.levels} lvl)' if t.levels else ''}",
                      "Current": f"{fmt_num(shown[0])} [{shown[1]:.2f}%]" if shown else "\u2014",
                      "Mesos": mesos, "Mesos / 5 min": fmt_num(m.per_5min(el))},
@@ -3743,8 +3691,6 @@ class App:
         self._log_tick(now)
         self.log_status.set(self._log_status_text(now))
         self.reader.own_rect = self._window_rect()
-        if now >= self._next_share:                   # retry runs that couldn't be sent
-            self.share_runs()
 
     # ---- buttons
     def _hotkey(self, action):
@@ -3989,7 +3935,7 @@ class App:
             "mesos": fmt_num(self.meso.value) if self.meso.value is not None else None, "tracking": bool(self.session.on),
             "tracker": f"paused: {self.session.waiting or 'no'}, gained {fmt_num(t.gained)} EXP in {fmt_dur(t.elapsed())}",
             "settings": {"mode": self.reader.mode, **{k: self.cfg.get(k) for k in ("gap_seconds", "transparency", "topmost", "ui_scale",
-                                                      "compact", "hotkeys_on", "share_runs", "check_updates")}},
+                                                      "compact", "hotkeys_on", "check_updates")}},
             "timeline": [self._private(x) for x in self.recent.lines()], "errors": errors,
         }
 

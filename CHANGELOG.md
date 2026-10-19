@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+**Changed**
+- The original author's best-maps website code (`server/`) is removed from this copy. The overlay already didn't use it.
+
 ## 0.9.10-beta
 
 **New**

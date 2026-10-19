@@ -181,7 +181,7 @@ It tells you whether that exact file was built here, and from which commit. Or c
 
 The same zip is also kept on the page of the build that made it (Actions, the run, the file at the bottom; you need a GitHub account to download it). Build runs since October 17 keep it exactly as it is, so the SHA-256 GitHub shows there is the zip's own, the same as on the release page.
 
-**Versions up to v0.9.9-beta** were released by the original author, [beanguri](https://github.com/beanguri), from [their repository](https://github.com/beanguri/Maple-Classic-Exp-Overlay). This copy's releases start at v0.9.10-beta.
+**Versions up to v0.9.9-beta** were released by the original author, [beanguri](https://github.com/beanguri), from [their repository](https://github.com/beanguri/Maple-Classic-Exp-Overlay). This copy's releases start at v0.9.10-beta. Their repository also has the code of their best-maps website, which this copy doesn't include or use.
 
 ### Code signing policy
 
@@ -245,8 +245,6 @@ py -3 tests/test_ui.py     # opens the real window for a few seconds (the notes 
 To build with exactly the packages the releases use: `py -3 -m pip install --require-hashes -r requirements-build.txt`.
 
 GitHub runs the logic tests on every push ([Tests workflow](.github/workflows/tests.yml)). The [Build workflow](.github/workflows/build.yml) builds the download on GitHub (Actions tab, **Build**, **Run workflow**), runs all the tests first, and signs the .exe once code signing is set up. Pushing a version tag also attests the zip and drafts the release with it; releases are only ever made that way.
-
-**`server/`** is the original author's best-maps website. This copy of the overlay doesn't use it.
 
 **How it reads the screen:**
 - It finds the `MapleStory.exe` window, then the EXP numbers (like `12,345 [12.34%]`) in the status bar.

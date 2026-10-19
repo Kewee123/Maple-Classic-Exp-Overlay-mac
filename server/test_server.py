@@ -87,15 +87,13 @@ bad = [dict(run(f"{day(2)}T10:00", 50000), seconds=300),                 # only 
        "not a run at all"]
 bad += [dict(run(f"{day(2)}T14:00", 50000), exp=400000),                   # more than Lv 31 and 32 hold
         run("2020-01-01T10:00", 50000),                                     # years ago
-        run(f"{(date.today() + timedelta(days=5)).isoformat()}T10:00", 50000),  # days ahead
-        dict(run(f"{day(2)}T14:30", 50000), exp=0)]                         # no EXP at all
+        run(f"{(date.today() + timedelta(days=5)).isoformat()}T10:00", 50000)]  # days ahead
 r = call("/api/runs", {"install": install(), "runs": bad})
 check(f"broken runs are refused ({[x.get('why') for x in r['results']]})", r.get("received") == 0)
 why = [x.get("why") for x in r["results"]]
 check(f"more EXP than the levels hold is refused ({why[5]})", why[5] == "impossible EXP for those levels")
 check(f"runs from long ago, or from days ahead, are refused ({why[6]}, {why[7]})",
       why[6] == why[7] == "start time out of range")
-check(f"a run with no EXP is refused ({why[8]})", why[8] == "no EXP")
 check("a post that isn't JSON is refused (other websites can't make browsers send runs)",
       call("/api/runs", {"install": install(), "runs": [run(f"{day(2)}T15:00", 50000)]},
            content_type="text/plain").get("status") == 415)

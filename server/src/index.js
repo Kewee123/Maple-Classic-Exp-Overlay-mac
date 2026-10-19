@@ -168,6 +168,7 @@ export function checkRun(r, now = Date.now()) {
   if (levelEnd < levelStart || levelEnd - levelStart > 10) return { why: "impossible level change" };
   if (!seconds) return { why: "not a 15-minute run" };
   if (exp === null || mesos === null || mesosSeconds === null) return { why: "bad EXP or mesos" };
+  if (exp <= 0) return { why: "no EXP" };               // (the overlay never shares a run without EXP)
   const expHr = exp / seconds * 3600;
   if (expHr > 5e6 || !expPossible(levelStart, levelEnd, exp)) return { why: "impossible EXP for those levels" };
   // Mesos/hr only when the mesos were seen for at least 10 minutes of the run.

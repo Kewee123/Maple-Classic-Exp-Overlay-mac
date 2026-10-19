@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.9.10-beta
 
 **New**
 - **% of a level gained over time:** Details now shows how much of a level you gained in the last 5 minutes, 15 minutes, 30 minutes and hour. Like "Last 5 min", only tracking time counts (not paused time). Until you've tracked that long, it shows what you've gained so far, marked "so far". A level-up counts each part as a % of its own level.

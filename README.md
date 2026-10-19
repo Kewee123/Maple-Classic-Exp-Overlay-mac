@@ -27,7 +27,7 @@ You don't type anything in. It reads all of this from your game screen by itself
 You need Windows 10 or 11. It takes about 2 minutes, and you don't need to install anything else.
 
 1. Go to the **[download page](../../releases/latest)**.
-2. Under **Assets**, click the **Maple-Classic-Exp-Overlay-v….zip** file (for example `Maple-Classic-Exp-Overlay-v0.9.3-beta.zip`) to download it. Don't click "Source code": that's for programmers.
+2. Under **Assets**, click the **Maple-Classic-Exp-Overlay-v….zip** file (for example `Maple-Classic-Exp-Overlay-v0.9.10-beta.zip`) to download it. Don't click "Source code": that's for programmers.
 3. Find the zip in your Downloads folder. **Right-click it**, choose **Extract All...**, then click **Extract**. (Just double-clicking the zip isn't enough. It has to be extracted.)
 4. Open the new folder, then the **Maple Classic Exp Overlay** folder inside it.
 5. Double-click **Maple Classic Exp Overlay.exe**. It may show as just **Maple Classic Exp Overlay**, with a gold chart icon.
@@ -174,24 +174,24 @@ Downloads on the [Releases page](../../releases) are built by GitHub from the co
 **Check your download** with the free [GitHub CLI](https://cli.github.com):
 
 ```
-gh attestation verify "the zip you downloaded.zip" --repo beanguri/Maple-Classic-Exp-Overlay
+gh attestation verify "the zip you downloaded.zip" --repo guddevbaddev/Maple-Classic-Exp-Overlay
 ```
 
 It tells you whether that exact file was built here, and from which commit. Or compare the file's SHA-256 with `SHA256SUMS.txt` on its release page (in PowerShell: `Get-FileHash "the zip you downloaded.zip"`).
 
 The same zip is also kept on the page of the build that made it (Actions, the run, the file at the bottom; you need a GitHub account to download it). Build runs since October 17 keep it exactly as it is, so the SHA-256 GitHub shows there is the zip's own, the same as on the release page.
 
-**About v0.9.6:** it was built by GitHub from its tag, before the package checks and attestations were added, so it has no attestation. Its SHA-256 is on its release page. [Its build's page](https://github.com/beanguri/Maple-Classic-Exp-Overlay/actions/runs/38631744258) keeps the zip inside an extra zip (GitHub does that unless told not to), so the SHA-256 shown *there* is for that outer zip and won't match: extract it once, and the zip inside has the release's SHA-256. That page keeps it until January 2027. Versions before v0.9.6 were built on my PC.
+**Versions up to v0.9.9-beta** were released by the original author, [beanguri](https://github.com/beanguri), from [their repository](https://github.com/beanguri/Maple-Classic-Exp-Overlay). This copy's releases start at v0.9.10-beta.
 
 ### Code signing policy
 
-Free code signing from [SignPath Foundation](https://signpath.org) is planned, so Windows stops warning about new downloads. Only builds made by the Build workflow from this repository are signed.
+This copy's downloads aren't code-signed yet, so Windows warns about them (see [How to install](#how-to-install)). The Build workflow can sign them with free code signing from [SignPath Foundation](https://signpath.org) once that's set up; only builds made by the Build workflow from this repository would be signed.
 
-- Committers and reviewers: [beanguri](https://github.com/beanguri)
-- Approvers: [beanguri](https://github.com/beanguri)
+- Committers and reviewers: [guddevbaddev](https://github.com/guddevbaddev)
+- Approvers: [guddevbaddev](https://github.com/guddevbaddev)
 - Privacy policy: see [Privacy](#privacy) above. In short: your log and notes stay on your PC, and the overlay only contacts another system to check GitHub for a newer version (can be turned off in Settings).
 
-**Credits:** the typeface is [Manrope](https://github.com/googlefonts/manrope) (SIL Open Font License, included as `assets/fonts/OFL.txt`).
+**Credits:** based on [Maple Classic Exp Overlay](https://github.com/beanguri/Maple-Classic-Exp-Overlay) by [beanguri](https://github.com/beanguri) (MIT License). The typeface is [Manrope](https://github.com/googlefonts/manrope) (SIL Open Font License, included as `assets/fonts/OFL.txt`).
 
 ## Updates
 

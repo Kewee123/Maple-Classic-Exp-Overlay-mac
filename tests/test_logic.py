@@ -751,5 +751,31 @@ gains(s, 9.5)
 idle(s, 40)
 check("the pause time can be changed in Settings (60 s: a 40 s break doesn't pause)", s.exp.running)
 
+# ---- % of a level gained in the last 5, 15, 30 and 60 minutes (Lv 30 needs 95,700: 957 is 1%)
+tr = exp_tracker(9570, 10.0)
+for i in range(1, 3):
+    clock[0] += 60
+    read(tr, 9570 + 957 * i)
+check(f"early on, the 15-minute % is what was gained so far ({m.fmt_pct_gained(tr.pct_in_last(900), 900)})",
+      m.fmt_pct_gained(tr.pct_in_last(900), 900) == "2.00% so far")
+for i in range(3, 71):                                   # 1% a minute for 70 minutes
+    clock[0] += 60
+    read(tr, 9570 + 957 * i)
+got = [m.fmt_pct_gained(tr.pct_in_last(sec), sec) for sec, _ in m.PCT_WINDOWS]
+check(f"1% a minute is 5%, 15%, 30% and 60% over the last 5, 15, 30 and 60 min ({got})",
+      got == ["5.00%", "15.00%", "30.00%", "60.00%"])
+tr.pause()
+clock[0] += 600
+tr.start()
+check("a pause doesn't count toward the last 5 minutes",
+      m.fmt_pct_gained(tr.pct_in_last(300), 300) == "5.00%")
+check("before anything is tracked, there's no %", m.fmt_pct_gained(m.ExpTracker().pct_in_last(300), 300) == "\u2014")
+tr = exp_tracker(94743, 99.0)                            # 1% before Lv 31 (108,480)
+clock[0] += 60
+for e in (1084, 1084):                                   # levels up, 1% into Lv 31
+    tr.observe([(e, int(e / 108480 * 10000) / 100)], True)
+check(f"a level-up counts each part as a % of its own level ({tr.pct_gained:.2f}%)",
+      tr.levels == 1 and abs(tr.pct_gained - 2.0) < 0.01)
+
 print("\nALL PASSED" if not failures else f"\n{failures} FAILED")
 sys.exit(1 if failures else 0)

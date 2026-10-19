@@ -78,6 +78,8 @@ TEMPLATE_PATH = ASSETS / "digits.npz"
 ICON_PATH = ASSETS / "icon.ico"
 POLL_SECONDS = 1.5          # how often to read the EXP bar
 ROLLING_WINDOW = 300        # seconds used for the "last 5 min" rate
+PCT_WINDOWS = ((300, "% last 5 min"), (900, "% last 15 min"), (1800, "% last 30 min"),
+               (3600, "% last hour"))   # (seconds, name) of the "% of a level gained in the last ..." lines
 SEARCH_STRIP = 0.22         # bottom part of the game window searched for the EXP text
 LOG_PATH = DATA_DIR / "exp_log.json"
 LOG_TEXT_PATH = DATA_DIR / "exp_log.txt"
@@ -1558,6 +1560,8 @@ class ExpTracker:
         self.gained = 0
         self.levels = 0
         self.samples = deque()                # (elapsed, gained)
+        self.pct_gained = 0.0                 # % of a level gained, each gain as a % of its own level
+        self.pct_samples = deque()            # (elapsed, pct_gained), for the last hour
 
     def start(self):
         if not self.running:
@@ -1577,6 +1581,7 @@ class ExpTracker:
         self._accum, self._resumed = 0.0, None
         self.gained, self.levels, self.deaths = 0, 0, 0
         self.samples = deque()
+        self.pct_gained, self.pct_samples = 0.0, deque()
 
     def elapsed(self):
         if self.running:
@@ -1641,13 +1646,22 @@ class ExpTracker:
     def _consistent(self, e, p):
         return abs(e / self.req * 100 - p) <= 0.02 + 0.003 * p
 
-    def _add_gain(self, amount):
+    def _add_gain(self, amount, pct=None):
+        """`pct`: the gain as % of a level, when it isn't all on this level (a level-up)."""
         if self.running:
             self.gained += amount
             now = self.elapsed()
             self.samples.append((now, self.gained))
             while self.samples and now - self.samples[0][0] > ROLLING_WINDOW:
                 self.samples.popleft()
+            if pct is None:
+                pct = amount / self.req * 100 if self.req else 0.0
+            self.pct_gained += pct
+            self.pct_samples.append((now, self.pct_gained))
+            # Keep one sample from before the longest window: what was gained up to then.
+            longest = PCT_WINDOWS[-1][0]
+            while len(self.pct_samples) > 1 and self.pct_samples[1][0] <= now - longest:
+                self.pct_samples.popleft()
 
     # ---- main entry
     def observe(self, candidates, confident=False):
@@ -1790,7 +1804,8 @@ class ExpTracker:
         self._pending_lvl = self._pending = None
         if self.running:
             self.levels += 1
-        self._add_gain(self.req - self.exp + e)
+        new_req = nxt if need == 2 else self.req       # (the new level's EXP, or a close guess)
+        self._add_gain(self.req - self.exp + e, (self.req - self.exp) / self.req * 100 + e / new_req * 100)
         self.exp, self.pct = e, p
         self._prev_req = self.req
         if need == 2:                          # the new level's EXP is known: no relearning
@@ -1807,6 +1822,15 @@ class ExpTracker:
     def rate(self):
         t = self.elapsed()
         return self.gained / t * 3600 if t >= 10 else None
+
+    def pct_in_last(self, seconds):
+        """(% of a level gained in the last `seconds` of tracking, seconds that covers), or None
+        before there's anything to go on. It covers less than asked early in a session."""
+        now = self.elapsed()
+        if now < 10:
+            return None
+        before = next((g for t, g in reversed(self.pct_samples) if t <= now - seconds), 0.0)
+        return self.pct_gained - before, min(seconds, now)
 
     def rolling_rate(self):
         if len(self.samples) < 2:
@@ -2527,6 +2551,15 @@ def fmt_eta(seconds):
     if minutes < 60:
         return f"{minutes} min"
     return f"{minutes // 60} h {minutes % 60:02d} min"
+
+
+def fmt_pct_gained(got, seconds):
+    """ExpTracker.pct_in_last(seconds) as shown: '1.24%', or '0.31% so far' while the session
+    is shorter than that."""
+    if got is None:
+        return "\u2014"
+    pct, covered = got
+    return f"{max(0.0, pct):.2f}%" + (" so far" if covered < seconds else "")
 
 
 def fmt_dur(seconds):
@@ -3731,6 +3764,7 @@ class App:
             mesos=fmt_num(m.per_hour(el)),
             tiles={"Last 5 min": fmt_num(rolling), "Mesos / hr": fmt_num(m.per_hour(el)), "Elapsed": fmt_dur(el)},
             details={"% / hr": f"{rate / t.req * 100:.2f}%" if rate and t.req else "\u2014",
+                     **{name: fmt_pct_gained(t.pct_in_last(sec), sec) for sec, name in PCT_WINDOWS},
                      "Gained": f"{fmt_short(t.gained)}{f'  (+{t.levels} lvl)' if t.levels else ''}",
                      "Current": f"{fmt_num(shown[0])} [{shown[1]:.2f}%]" if shown else "\u2014",
                      "Mesos": mesos, "Mesos / 5 min": fmt_num(m.per_5min(el))},

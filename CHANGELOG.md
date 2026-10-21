@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.11-beta
+
+**New**
+- **A Mac download:** `Maple-Classic-Exp-Overlay-v…-mac.zip` has the overlay as a Mac app (Apple Silicon, macOS 14 or newer), with its own Tesseract, so nothing else needs installing. It's built by GitHub like the Windows one. Hotkeys aren't available on a Mac yet. See "On a Mac" in the README.
+
+**Changed**
+- The original author's best-maps website code (`server/`) is removed from this copy. The overlay already didn't use it.
+
 ## 0.9.10-beta
 
 **New**

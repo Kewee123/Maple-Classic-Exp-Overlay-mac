@@ -4,7 +4,7 @@
 
 This copy doesn't connect to the original author's best-maps website: it never shares your runs, and it has no **Best maps** button. The only time it goes online is the update check, which looks at this repository's releases.
 
-**[Download it here](../../releases/latest)** · [How to install](#how-to-install)
+**[Download it here](../../releases/latest)** (Windows and Mac) · [How to install](#how-to-install) · [On a Mac](#on-a-mac)
 
 > **This is a beta.** It works, but you might run into rough edges. I'm actively improving it, so check back for updates. If something doesn't work, please [tell me](../../issues)!
 
@@ -24,7 +24,7 @@ You don't type anything in. It reads all of this from your game screen by itself
 
 ## How to install
 
-You need Windows 10 or 11. It takes about 2 minutes, and you don't need to install anything else.
+You need Windows 10 or 11 (on a Mac, see [On a Mac](#on-a-mac)). It takes about 2 minutes, and you don't need to install anything else.
 
 1. Go to the **[download page](../../releases/latest)**.
 2. Under **Assets**, click the **Maple-Classic-Exp-Overlay-v….zip** file (for example `Maple-Classic-Exp-Overlay-v0.9.10-beta.zip`) to download it. Don't click "Source code": that's for programmers.
@@ -35,6 +35,17 @@ You need Windows 10 or 11. It takes about 2 minutes, and you don't need to insta
 **Windows says "Windows protected your PC"?** Click **More info**, then **Run anyway**. Windows shows this for any new program that isn't from a big company.
 
 **Keep the whole folder together.** The program needs the files next to it, so don't drag it out of its folder. To put it on your desktop, right-click **Maple Classic Exp Overlay.exe** and choose **Send to**, then **Desktop (create shortcut)**. On Windows 11, **Send to** is under **Show more options**.
+
+### On a Mac
+
+You need a Mac with Apple Silicon (M1 or newer) and macOS 14 (Sonoma) or newer, with MapleStory running through CrossOver, Whisky, Parallels or a game stream.
+
+1. On the **[download page](../../releases/latest)**, under **Assets**, click the file ending in **-mac.zip** (for example `Maple-Classic-Exp-Overlay-v0.9.11-beta-mac.zip`).
+2. Double-click the zip in your Downloads folder to unpack it, and drag **Maple Classic Exp Overlay** (the app) into your **Applications** folder.
+3. Open it. macOS will say it can't check the app for malware, because it isn't from a registered Apple developer: click **Done**, then open **System Settings > Privacy & Security**, scroll down, and click **Open Anyway** next to Maple Classic Exp Overlay. You only need to do this once.
+4. It asks to record your screen (that's how it reads the game). Click **Open System Settings**, switch **Maple Classic Exp Overlay** on under **Screen Recording**, then open the app again.
+
+After an update, macOS may ask for Screen Recording again: switch it off and on for the new version. **Hotkeys aren't available on a Mac yet**, so use the buttons. Everything else works as on Windows. The Mac version hasn't been tried with the game by this repository's owner, so please [say how it goes](../../issues).
 
 ## How to use it
 
@@ -181,7 +192,7 @@ It tells you whether that exact file was built here, and from which commit. Or c
 
 The same zip is also kept on the page of the build that made it (Actions, the run, the file at the bottom; you need a GitHub account to download it). Build runs since October 17 keep it exactly as it is, so the SHA-256 GitHub shows there is the zip's own, the same as on the release page.
 
-**Versions up to v0.9.9-beta** were released by the original author, [beanguri](https://github.com/beanguri), from [their repository](https://github.com/beanguri/Maple-Classic-Exp-Overlay). This copy's releases start at v0.9.10-beta.
+**Versions up to v0.9.9-beta** were released by the original author, [beanguri](https://github.com/beanguri), from [their repository](https://github.com/beanguri/Maple-Classic-Exp-Overlay). This copy's releases start at v0.9.10-beta. Their repository also has the code of their best-maps website, which this copy doesn't include or use.
 
 ### Code signing policy
 
@@ -219,7 +230,7 @@ py -3 -m pip install -r requirements.txt
 run.bat
 ```
 
-**On macOS** (from source only, with the game running through CrossOver, Whisky, Parallels or a game stream): macOS support was written by thanhphamvan, who tried it on a real Mac with the game. I don't own a Mac, so I can't test it myself: GitHub's automatic tests run on a real Mac, but not with the game. If you try it, please tell me how it goes.
+**On macOS** (the Mac download, or from source, with the game running through CrossOver, Whisky, Parallels or a game stream): macOS support was written by thanhphamvan, who tried it on a real Mac with the game. I don't own a Mac, so I can't test it myself: GitHub's automatic tests run on a real Mac, but not with the game. If you try it, please tell me how it goes.
 
 **How to run it on a Mac:** `brew install tesseract`, then `python3 -m pip install -r requirements.txt` and `python3 maple_exp.py`. The first time, allow your Terminal (or Python) in **System Settings > Privacy & Security > Screen Recording**, then start it again. The window is found by "MapleStory" in its title; if it isn't, use **Select area**. Hotkeys aren't available on macOS yet.
 
@@ -244,9 +255,9 @@ py -3 tests/test_ui.py     # opens the real window for a few seconds (the notes 
 
 To build with exactly the packages the releases use: `py -3 -m pip install --require-hashes -r requirements-build.txt`.
 
-GitHub runs the logic tests on every push ([Tests workflow](.github/workflows/tests.yml)). The [Build workflow](.github/workflows/build.yml) builds the download on GitHub (Actions tab, **Build**, **Run workflow**), runs all the tests first, and signs the .exe once code signing is set up. Pushing a version tag also attests the zip and drafts the release with it; releases are only ever made that way.
+**The Mac download** is built the same way on a Mac: `brew install tesseract dylibbundler`, `python3 -m pip install --require-hashes -r requirements-build-mac.txt`, then `python3 build.py`. It makes `release/Maple-Classic-Exp-Overlay-v<version>-mac.zip`, with the app and its own copy of Tesseract (and the libraries it needs), signed ad hoc. The Build workflow does this too, after the Windows build, and adds the Mac zip to the same draft release.
 
-**`server/`** is the original author's best-maps website. This copy of the overlay doesn't use it.
+GitHub runs the logic tests on every push ([Tests workflow](.github/workflows/tests.yml)). The [Build workflow](.github/workflows/build.yml) builds the download on GitHub (Actions tab, **Build**, **Run workflow**), runs all the tests first, and signs the .exe once code signing is set up. Pushing a version tag also attests the zip and drafts the release with it; releases are only ever made that way.
 
 **How it reads the screen:**
 - It finds the `MapleStory.exe` window, then the EXP numbers (like `12,345 [12.34%]`) in the status bar.

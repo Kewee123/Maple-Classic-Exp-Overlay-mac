@@ -65,6 +65,12 @@ except ocr.TesseractError as e:
 n = len(calls)
 check("no pictures means no run", t.read_lines([]) == [] and len(calls) == n)
 ocr.subprocess.run = real_run
+own = Path(tempfile.mkdtemp())
+(own / "tessdata").mkdir()
+check("a Tesseract with its language data next to it (the Mac app's) is told to use that",
+      ocr.Tesseract(str(own / "tesseract")).env.get("TESSDATA_PREFIX") == str(own / "tessdata"))
+check("...and one without is left to find its own",
+      ocr.Tesseract(str(Path(tempfile.mkdtemp()) / "tesseract")).env.get("TESSDATA_PREFIX") == os.environ.get("TESSDATA_PREFIX"))
 
 # ---- with the real Tesseract: one run for many pictures gives the same text as one run each
 tess = m.find_tesseract()

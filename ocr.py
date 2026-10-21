@@ -37,6 +37,11 @@ class Tesseract:
     def __init__(self, cmd, timeout=30):
         self.cmd, self.timeout = cmd, timeout
         self.env = dict(os.environ, OMP_THREAD_LIMIT="1")
+        data = os.path.join(os.path.dirname(cmd), "tessdata")
+        if os.path.isdir(data):
+            # Its own language data, next to it (the Mac app's Tesseract would otherwise look
+            # where Homebrew keeps it, on the PC it was built on).
+            self.env["TESSDATA_PREFIX"] = data
         self.runs = 0                                   # how many times Tesseract was started
 
     def read_lines(self, images, chars=None):

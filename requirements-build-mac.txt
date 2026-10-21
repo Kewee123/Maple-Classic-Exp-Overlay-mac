@@ -1,0 +1,17 @@
+# The exact packages the Mac download is built with on GitHub (Python 3.12, Apple Silicon).
+# Each file's SHA-256 is checked as it's installed (pip install --require-hashes), so a
+# package that isn't byte-for-byte the one listed here can't get into a build. The same
+# versions as the Windows download (requirements-build.txt), with the Mac files' SHA-256s.
+#
+# To change a version: download the new file for macOS arm64/Python 3.12 from PyPI, check its
+# SHA-256 against the one PyPI shows, and update both lines.
+altgraph==0.17.5 --hash=sha256:f3a22400bce1b0c701683820ac4f3b159cd301acab067c51c653e06961600597
+macholib==1.16.3 --hash=sha256:0e315d7583d38b8c77e815b1ecbdbf504a8258d8b3e17b61165c6feb60d18f2c
+mss==10.1.0 --hash=sha256:9179c110cadfef5dc6dc4a041a0cd161c74c379218648e6640b48c6b5cfe8918
+numpy==2.2.6 --hash=sha256:894b3a42502226a1cac872f840030665f33326fc3dac8e57c607905773cdcde3
+opencv-python-headless==4.12.0.88 --hash=sha256:1e58d664809b3350c1123484dd441e1667cd7bed3086db1b9ea1b6f6cb20b50e
+packaging==25.0 --hash=sha256:29572ef2b1f17581046b3a2227d5c611fb25ec70ca1ba8554b24b0e69331a484
+pillow==12.3.0 --hash=sha256:ffd0c5368496f41b0944be820fcb7a838aa6e623d250b01acf2643939c3f99d7
+pyinstaller-hooks-contrib==2025.10 --hash=sha256:aa7a378518772846221f63a84d6306d9827299323243db890851474dfd1231a9
+pyinstaller==6.17.0 --hash=sha256:4e446b8030c6e5a2f712e3f82011ecf6c7ead86008357b0d23a0ec4bcde31dac
+setuptools==83.0.0 --hash=sha256:29b23c360f22f414dc7336bb39178cc7bcbf6021ed2733cde173f09dba19abb3

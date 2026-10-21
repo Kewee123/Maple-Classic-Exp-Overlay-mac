@@ -673,6 +673,42 @@ gains(s, 9.5)
 idle(s, 40)
 check("the pause time can be changed in Settings (60 s: a 40 s break doesn't pause)", s.exp.running)
 
+# PQ mode: a party quest goes through several maps, with stages that give no EXP until cleared
+s = session()
+s.start(clock[0])
+s.set_pq(True)
+gains(s, 30)
+gained = s.exp.gained
+s.map_seen("Kerning PQ: Stage 2")
+check("in PQ mode, changing maps doesn't pause", s.waiting is None and s.exp.running)
+gains(s, 6.5)
+check(f"...and the numbers carry on, not from zero (gained {s.exp.gained})", s.exp.gained == gained + 200)
+idle(s, 120)                                             # two minutes on a puzzle
+check("a stage with no EXP for 2 minutes doesn't pause it", s.exp.running and s.waiting is None)
+e = s.exp.exp + 5000                                     # the stage is cleared
+s.observe([(e, int(e / 95700 * 10000) / 100)], True, clock[0])
+check(f"...so the stage-clear EXP counts (gained {s.exp.gained})", s.exp.gained == gained + 200 + 5000)
+idle(s, m.PQ_GAP + 5)
+check(f"it still pauses by itself after {m.PQ_GAP // 60} minutes without EXP", s.waiting == "idle")
+s.set_pq(False)
+gains(s, 3.5)
+check("with PQ mode off again, the map you're on is the one the numbers are for",
+      s.map == "Kerning PQ: Stage 2" and s.exp.running)
+s.map_seen("Kerning City")
+check("...and leaving it pauses, as usual", s.waiting == "map")
+log, _ = new_log()
+t = 0
+log.gain(t, 100)                                         # PQ mode's log: one line, a long gap allowed
+while t < 400:
+    t += 1
+    if t % 120 == 0:
+        log.gain(t, 3000)                                # a stage cleared every 2 minutes
+    entry = log.tick(t, m.PQ_MAP, 30, 4, None, "Bandit", m.PQ_MAP, gap=m.PQ_GAP)
+    if entry:
+        break
+check(f"in PQ mode the log keeps going through 2-minute stages, on one {m.PQ_MAP!r} line "
+      f"({entry and (entry['map'], entry['exp'])})", entry is not None and entry["map"] == m.PQ_MAP and entry["exp"] == 6000)
+
 # ---- % of a level gained in the last 5, 15, 30 and 60 minutes (Lv 30 needs 95,700: 957 is 1%)
 tr = exp_tracker(9570, 10.0)
 for i in range(1, 3):

@@ -4,6 +4,7 @@
 
 **New**
 - **A Mac download:** `Maple-Classic-Exp-Overlay-v…-mac.zip` has the overlay as a Mac app (Apple Silicon, macOS 14 or newer), with its own Tesseract, so nothing else needs installing. It's built by GitHub like the Windows one. Hotkeys aren't available on a Mac yet. See "On a Mac" in the README.
+- **PQ mode** (in the **...** menu), for party quests: changing maps doesn't reset the numbers, it only pauses by itself after 10 minutes without EXP (so the EXP for clearing a stage counts), and the log puts the whole PQ on one "Party Quest" line. It's off each time the overlay starts.
 
 **Changed**
 - The original author's best-maps website code (`server/`) is removed from this copy. The overlay already didn't use it.

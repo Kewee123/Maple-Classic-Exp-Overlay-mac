@@ -72,9 +72,21 @@ Within a few seconds it shows your level and how much EXP you have. The per-hour
 | **Don't log** | Keeps the current run out of the log, for example while you're testing a map or waiting for your party. Everything is still shown on screen. It turns itself off when you leave the map or stop getting EXP, so your next run is logged as usual. |
 | **Select area** | Lets you drag a box around the EXP numbers, if it ever can't find them. The button then turns into **Follow game**, which goes back to finding them by itself. |
 | **View capture** | Shows exactly what it read from your screen |
+| **PQ mode** | For party quests (in the **...** menu). See [PQ mode](#pq-mode) below. |
 | **⚙** | Settings |
 | **>** | Opens the log |
 | **Compact** | A much smaller window with just EXP/hr, when you'll level, the last 5 minutes, mesos/hr and Start/Pause. The button then says **Full**, to bring everything back. Shift+4 or double-clicking the big number does the same. |
+
+### PQ mode
+
+A party quest goes through several maps, and a stage can go minutes without EXP until it's cleared. Normally the overlay pauses when you change maps (and starts that map's numbers from zero), and after 15 seconds without EXP. Both would spoil a PQ, so turn on **PQ mode** in the **...** menu (it then says **PQ mode: on**) before you start:
+
+- **Changing maps doesn't reset anything.** EXP/hr, mesos/hr and the time carry on through the whole quest.
+- **It only pauses by itself after 10 minutes without EXP**, so the EXP you get when a stage is cleared counts.
+- **The log puts the PQ on one line called "Party Quest"**, whatever maps it went through. Right-click it and choose **Rename map** to call it, say, "Kerning PQ".
+- The status at the top says **PQ** while it's tracking.
+
+It turns itself off when you close the overlay, so your normal farming isn't affected if you forget. To turn it off sooner, choose **PQ mode: on** in the menu again.
 
 ## Hotkeys
 

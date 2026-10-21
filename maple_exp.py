@@ -84,6 +84,8 @@ SEARCH_STRIP = 0.22         # bottom part of the game window searched for the EX
 LOG_PATH = DATA_DIR / "exp_log.json"
 LOG_TEXT_PATH = DATA_DIR / "exp_log.txt"
 LOG_BLOCK = 300             # seconds of non-stop EXP gain behind each log update
+PQ_GAP = 600                # PQ mode: seconds without EXP before it pauses (stages can go a while without)
+PQ_MAP = "Party Quest"      # PQ mode: the log line a whole party quest goes on, whatever its maps
 MESOS_PATH = DATA_DIR / "mesos_digits.npz"             # learned as you play...
 MESOS_START_PATH = ASSETS / "mesos_digits.npz"          # ...starting from these
 MESOS_BOX_PATH = ASSETS / "mesos_box.npz"
@@ -1911,6 +1913,10 @@ class Session:
     you're on. Time spent paused never counts, and an idle pause rewinds the clock to the
     last EXP gain. The gain that ends a pause starts the clock again rather than counting,
     just like a log stretch's first gain.
+
+    In PQ mode (a party quest goes through several maps) changing maps doesn't pause or start
+    from zero, and it only pauses by itself after PQ_GAP seconds without EXP: a stage can take
+    a while, and its EXP comes all at once when it's cleared.
     """
 
     def __init__(self, gap):
@@ -1921,6 +1927,17 @@ class Session:
         self.map = None             # the map these numbers are for
         self.here = None            # the map you're on now
         self.last_gain = None
+        self.pq = False             # PQ mode: maps don't matter, and idle means PQ_GAP
+
+    @property
+    def idle_gap(self):
+        """Seconds without EXP before it pauses by itself."""
+        return PQ_GAP if self.pq else self.gap
+
+    def set_pq(self, on):
+        self.pq = on
+        if not on:
+            self.map = self.here    # these numbers are for the map you're on from now
 
     def start(self, now):
         self.on, self.waiting, self.last_gain = True, None, now
@@ -1952,7 +1969,7 @@ class Session:
         if t.running and t.gained > gained_before:
             self.last_gain = now
         elif self.on and self.waiting and rose:
-            if self.map and self.here and self.here != self.map:
+            if self.map and self.here and self.here != self.map and not self.pq:
                 t.new_session()             # a different map: its own numbers
                 self.meso.reset()
                 self.map = self.here
@@ -1968,7 +1985,7 @@ class Session:
             return
         if self.map is None:
             self.map = name
-        elif name != self.map:              # left the map
+        elif name != self.map and not self.pq:   # left the map
             if self.exp.running:
                 self._wait("map")
             elif self.waiting:
@@ -1976,7 +1993,7 @@ class Session:
 
     def tick(self, now):
         """Call regularly: pauses after `gap` seconds without EXP."""
-        if self.on and self.exp.running and now - self.last_gain > self.gap:
+        if self.on and self.exp.running and now - self.last_gain > self.idle_gap:
             self._wait("idle")
 
 
@@ -2252,13 +2269,14 @@ class AutoLog:
             if self.run:
                 self.run["exp"] += amount
 
-    def tick(self, now, map_name, level, party=1, mesos=None, job=None, map_read=None):
+    def tick(self, now, map_name, level, party=1, mesos=None, job=None, map_read=None, gap=None):
         """Call regularly while tracking. mesos is (mesos gained so far, when last read) from
-        the MesoTracker, or None; job is the class; map_read the map name exactly as read.
+        the MesoTracker, or None; job is the class; map_read the map name exactly as read;
+        gap, seconds without EXP that end a stretch, if not the usual (PQ mode).
         Returns the entry when one was logged."""
         if self.start is None:
             return None
-        if now - self.last_gain > self.gap:
+        if now - self.last_gain > (gap or self.gap):
             self.reset_clock()                               # no EXP for too long: start over
             return None
         if map_name:
@@ -2623,6 +2641,7 @@ class App:
         self.note = None
         self.last_logged = None
         self.skip_log = False               # "Don't log" is on: this run isn't logged
+        self.pq_mode = False                # PQ mode (the ... menu): changing maps doesn't reset
         self.job = None                     # the class, from the status bar
         self.map_read = None                # the map name exactly as read
         self.found_at = None                # when the EXP bar was first read for this level
@@ -2724,7 +2743,23 @@ class App:
     def _open_menu(self, anchor):
         PopupMenu(self.theme, anchor, [
             ("Follow the game" if self.reader.mode == "region" else "Select area", None, self.toggle_area),
-            ("View capture", None, self.view_capture)])
+            ("View capture", None, self.view_capture),
+            ("PQ mode: on" if self.pq_mode else "PQ mode: off", None, self.toggle_pq)])
+
+    def toggle_pq(self):
+        """PQ mode: for party quests, which go through several maps. The numbers carry on from
+        map to map, it waits longer without EXP before pausing, and the log puts the whole
+        quest on one line (PQ_MAP). Off each time the overlay starts."""
+        self.pq_mode = not self.pq_mode
+        self.session.set_pq(self.pq_mode)
+        self.autolog.reset_clock()          # a log stretch is all PQ or all one map
+        self.status.set(f"PQ mode on: changing maps doesn't reset the numbers, it pauses by itself only after "
+                        f"{PQ_GAP // 60} minutes without EXP, and the log calls it \"{PQ_MAP}\"."
+                        if self.pq_mode else "PQ mode off: each map has its own numbers again.")
+
+    def _log_map(self):
+        """The map the log is for: the one you're on, or PQ_MAP in PQ mode."""
+        return PQ_MAP if self.pq_mode else self.map_name
 
     def _logging_clicked(self, on):
         if self.skip_log == on:                           # the switch and the state disagree: flip
@@ -3120,7 +3155,8 @@ class App:
             self._fill_log()
 
     def _log_status_text(self, now):
-        where = " · ".join(x for x in (self.map_name or "Map not read yet", f"Lv {self.level or '?'}",
+        here = f"{PQ_MAP} (PQ mode)" if self.pq_mode else self.map_name or "Map not read yet"
+        where = " · ".join(x for x in (here, f"Lv {self.level or '?'}",
                                        self.job, party_label(self.party)) if x)
         if self.skip_log:
             return f"{where}\nNot logging this run."
@@ -3136,7 +3172,7 @@ class App:
         if self.last_logged and now - self.last_logged < 8:
             text += "  (just logged)"
         run = self.autolog.run_progress(now)
-        done = self.autolog.runs_done(self.map_name, self.party, self.job) if self.map_name else 0
+        done = self.autolog.runs_done(self._log_map(), self.party, self.job) if self._log_map() else 0
         if run is not None or done:
             line = f"{RUN_SECONDS // 60}-min run: {int(run // 60) if run is not None else 0} of {RUN_SECONDS // 60} min"
             text += f"\n{line}" + (f" · {done} done here today" if done else "")
@@ -3604,7 +3640,8 @@ class App:
             return "Found your EXP bar. Your level shows after your next EXP gain."
         s = self.session
         if s.waiting == "idle":
-            return (f"Paused: no EXP for {s.gap} seconds, so this time doesn't count. "
+            gap = f"{s.idle_gap // 60} minutes" if s.pq else f"{s.idle_gap} seconds"
+            return (f"Paused: no EXP for {gap}, so this time doesn't count. "
                     "It carries on at your next EXP gain.")
         if s.waiting == "map":
             return ("Paused: you left the map. It carries on at your next EXP gain "
@@ -3620,7 +3657,9 @@ class App:
             return
         m = self.meso
         mesos = (m.gained, m.seen_at) if m.value is not None and now - m.seen_at <= 30 else None
-        entry = self.autolog.tick(now, self.map_name, self.level, self.party, mesos, self.job, self.map_read)
+        pq = self.pq_mode
+        entry = self.autolog.tick(now, self._log_map(), self.level, self.party, mesos, self.job,
+                                  PQ_MAP if pq else self.map_read, PQ_GAP if pq else None)
         if entry:
             self.last_logged = now
             self._fill_log()
@@ -3650,7 +3689,8 @@ class App:
         if sess.waiting:
             return "paused", "Paused"
         if t.running:
-            return "tracking", f"Tracking \u00b7 Lv {self.level}" if self.level else "Tracking"
+            what = "PQ" if self.pq_mode else "Tracking"
+            return "tracking", f"{what} \u00b7 Lv {self.level}" if self.level else what
         return ("paused", "Paused") if t.elapsed() > 0 else ("ready", "Ready")
 
     def _update_display(self):

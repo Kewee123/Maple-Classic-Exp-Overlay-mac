@@ -157,13 +157,15 @@ jobs:
         run: |
           # "release" ticked: make the tag now that the build has passed, on the commit it built.
           # (A tag made with this run's token doesn't start this workflow again.)
-          existing=$(gh api "repos/$GITHUB_REPOSITORY/commits/$TAG" --jq .sha 2>/dev/null || true)
-          if [ -z "$existing" ]; then
+          # (gh api prints GitHub's error message to stdout when there's no such tag: go by its exit code)
+          if existing=$(gh api "repos/$GITHUB_REPOSITORY/commits/$TAG" --jq .sha 2>/dev/null); then
+            if [ "$existing" != "$GITHUB_SHA" ]; then
+              echo "::error::$TAG is already on another commit ($existing). Raise VERSION in maple_exp.py for a new release."
+              exit 1
+            fi
+          else
             gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$TAG" -f sha="$GITHUB_SHA" > /dev/null
             echo "Made the tag $TAG on $GITHUB_SHA"
-          elif [ "$existing" != "$GITHUB_SHA" ]; then
-            echo "::error::$TAG is already on another commit ($existing). Raise VERSION in maple_exp.py for a new release."
-            exit 1
           fi
           name=$(basename "$ZIP")
           hash=$(sha256sum "$ZIP" | cut -d' ' -f1)

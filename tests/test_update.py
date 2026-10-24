@@ -164,7 +164,8 @@ if sys.platform in ("win32", "darwin"):
         (new / "Contents" / "Resources" / "version.txt").write_text("new")
         (new / "Contents" / "Frameworks").mkdir()
         (new / "Contents" / "Frameworks" / "link").symlink_to("../Resources/version.txt")
-        u.start_install(new, installed, work, log, pid=finished.pid, relaunch=False, wait=True)
+        ran = u.start_install(new, installed, work, log, pid=finished.pid, relaunch=False, wait=True)
+        print(f"     (the script: exit {ran.returncode}, {ran.stderr.decode(errors='replace').strip()[-800:]!r})")
         check("on a Mac the new app replaces the old one", (installed / "Contents" / "Resources" / "version.txt").read_text() == "new"
               and not (installed / "Contents" / "Resources" / "only-old.txt").exists())
         check("...keeping its links", (installed / "Contents" / "Frameworks" / "link").is_symlink())
@@ -180,7 +181,9 @@ if sys.platform in ("win32", "darwin"):
         (new / "_internal").mkdir(parents=True)
         (new / f"{u.NAME}.exe").write_text("new")
         (new / "_internal" / "version.txt").write_text("new")
-        u.start_install(new, installed, work, log, pid=finished.pid, relaunch=False, wait=True)
+        ran = u.start_install(new, installed, work, log, pid=finished.pid, relaunch=False, wait=True)
+        print(f"     (the script: exit {ran.returncode}, {ran.stdout.decode(errors='replace').strip()[-600:]!r}, "
+              f"{ran.stderr.decode(errors='replace').strip()[-1500:]!r})")
         check("on Windows the new version's files replace the old ones",
               (installed / f"{u.NAME}.exe").read_text() == "new" and (installed / "_internal" / "version.txt").read_text() == "new")
         check("..._internal as a whole (nothing old left in it)", not (installed / "_internal" / "only-old.txt").exists())

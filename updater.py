@@ -220,8 +220,8 @@ def start_install(new_program, installed, workdir, log, pid=None, relaunch=True,
         kw = {"creationflags": 0x00000008 | 0x00000200}             # DETACHED_PROCESS, NEW_PROCESS_GROUP
     else:
         raise UpdateError("updating in place is only for the Windows and Mac downloads")
-    if wait:
-        return subprocess.run(args, capture_output=True, timeout=300, **kw).returncode
+    if wait:                                                        # (tests: attached, to see how it went)
+        return subprocess.run(args, capture_output=True, timeout=300)
     subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                      start_new_session=(sys.platform == "darwin"), **kw)
     return None

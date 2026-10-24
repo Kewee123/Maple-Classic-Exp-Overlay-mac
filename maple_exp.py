@@ -53,6 +53,7 @@ import report
 from platforms import create_platform, hotkey_text, parse_hotkey
 from report import Health, Recent
 from share_card import CardStats, make_card
+import updater
 from ui_gfx import INK, TEXT_DIM
 from ui_kit import (ACCENT, ACCENT_SOFT, BAD, BG, DIM, FAINT, FG, GOOD, LINE, LIST_BG, LIST_BG2, LIST_PART,  # noqa: F401
                     ON_ACCENT, RAISED, RAISED_HI, SELECT, SURFACE, WARN, setup_ttk)
@@ -299,19 +300,28 @@ def _plain_text(markdown):
     return t.strip()[:5000]
 
 
+def _github(url, timeout):
+    """A request to GitHub (the update check, and Update now's downloads): this repository's
+    releases only."""
+    if not (url.startswith(f"https://github.com/{GITHUB_REPO}/releases/")
+            or url.startswith(f"https://api.github.com/repos/{GITHUB_REPO}/releases/")):
+        raise ValueError(f"not this repository's releases: {url[:80]}")
+    request = urllib.request.Request(url, headers={
+        "User-Agent": f"MapleClassicExpOverlay/{VERSION}", "Accept": "application/vnd.github+json, */*"})
+    return urllib.request.urlopen(request, timeout=timeout)
+
+
 def check_for_update(timeout=8):
-    """(newer version, its release notes) if GitHub has a newer release, else None.
-    Raises if GitHub can't be reached."""
-    request = urllib.request.Request(LATEST_RELEASE_API, headers={
-        "User-Agent": f"MapleClassicExpOverlay/{VERSION}", "Accept": "application/vnd.github+json"})
-    with urllib.request.urlopen(request, timeout=timeout) as response:
+    """(newer version, its release notes, {file: download address}) if GitHub has a newer release,
+    else None. Raises if GitHub can't be reached."""
+    with _github(LATEST_RELEASE_API, timeout) as response:
         data = json.loads(response.read(1_000_000).decode("utf-8"))
     tag = str(data.get("tag_name", ""))
     if not re.fullmatch(r"v?\d+(\.\d+){0,2}(-[\w.]+)?", tag):
         raise ValueError(f"unexpected release name {tag[:40]!r}")
     if version_key(tag) <= version_key(VERSION):
         return None
-    return tag.lstrip("vV"), _plain_text(str(data.get("body") or ""))
+    return tag.lstrip("vV"), _plain_text(str(data.get("body") or "")), updater.release_assets(data, GITHUB_REPO)
 
 
 # --------------------------------------------------------------------------- hotkeys
@@ -3568,10 +3578,10 @@ class App:
             if manual:
                 messagebox.showinfo("Updates", f"You have the latest version (v{VERSION}).", parent=parent)
             return
-        version, notes = found
+        version, notes, assets = found
         if not manual and self.cfg.get("skip_version") == version:
             return
-        w = tk.Toplevel(self.root)
+        w = self.update_win = tk.Toplevel(self.root)
         w.title("Update available")
         w.configure(bg=BG, padx=self.theme.px(26), pady=self.theme.px(22))
         w.resizable(False, False)
@@ -3583,6 +3593,9 @@ class App:
         tk.Label(w, text=f"v{version} is out", bg=BG, fg=ACCENT, font=th.font("extra", 20)).pack(anchor="w")
         tk.Label(w, text=f"You have v{VERSION}. Your log, notes and settings are kept when you update.",
                  bg=BG, fg=DIM, font=th.font("regular", 12)).pack(anchor="w", pady=(2, th.px(14)))
+        installed = updater.installed_location()
+        mac = sys.platform == "darwin"
+        in_place = installed is not None and updater.asset_names(version, mac)[0] in assets
         tk.Label(w, text="WHAT'S NEW", bg=BG, fg=DIM, font=th.font("semibold", 10)).pack(anchor="w", pady=(0, th.px(6)))
         box = tk.Frame(w, bg=LIST_BG, highlightthickness=1, highlightbackground=LINE)
         box.pack(fill="both", expand=True, pady=(0, th.px(16)))
@@ -3594,6 +3607,10 @@ class App:
         text.configure(state="disabled")
         text.pack(side="left", fill="both", expand=True)
         scroll.pack(side="right", fill="y")
+        progress = tk.StringVar(value="Update now downloads it, checks it, and restarts the overlay as the new "
+                                       "version (in a few seconds)." if in_place else "")
+        tk.Label(w, textvariable=progress, bg=BG, fg=DIM, font=th.font("regular", 11), wraplength=th.px(520),
+                 justify="left").pack(anchor="w", pady=(0, th.px(10)))
         buttons = tk.Frame(w, bg=BG)
         buttons.pack(fill="x")
 
@@ -3605,12 +3622,69 @@ class App:
             self.cfg["skip_version"] = version
             save_config(self.cfg)
             w.destroy()
-        Button(buttons, th, text="Get the update", kind="primary", width=140, height=40, radius=12, size=13,
-               command=get_it, bg=BG).pack(side="left")
+
+        def update_now():
+            for b in buttons.winfo_children():
+                b.pack_forget()
+            progress.set("Downloading...")
+            self._update_progress = progress
+            self.start_update(version, assets, installed)
+        if in_place:
+            Button(buttons, th, text="Update now", kind="primary", width=130, height=40, radius=12, size=13,
+                   command=update_now, bg=BG).pack(side="left")
+        Button(buttons, th, text="Get the update" if not in_place else "Download page",
+               kind="primary" if not in_place else "secondary", width=140, height=40, radius=12,
+               size=13 if not in_place else 12, command=get_it, bg=BG).pack(side="left", padx=(th.px(8) if in_place else 0, 0))
         Button(buttons, th, text="Not now", kind="secondary", width=96, height=40, radius=12, size=12,
                command=w.destroy, bg=BG).pack(side="left", padx=(th.px(8), 0))
         Button(buttons, th, text="Skip this version", kind="ghost", width=140, height=40, radius=12, size=12,
                command=skip, bg=BG).pack(side="right")
+
+    def start_update(self, version, assets, installed):
+        """Update now: downloads and checks the new version in the background (see updater.py);
+        the answers come via _pump: ("update_progress", text), ("update_ready", ...) or
+        ("update_failed", why)."""
+        log_activity(f"Updating to v{version}")
+        mac = sys.platform == "darwin"
+
+        def progress(done, total):
+            self.q.put(("update_progress", f"Downloading... {done / 1e6:.0f} MB"
+                        + (f" of {total / 1e6:.0f} MB" if total else "")))
+
+        def work():
+            try:
+                new, workdir = updater.prepare(version, assets, lambda url: _github(url, 60), progress, mac)
+                self.q.put(("update_ready", (version, new, workdir, installed)))
+            except Exception as e:
+                self.q.put(("update_failed", f"{type(e).__name__}: {e}"))
+        threading.Thread(target=work, daemon=True).start()
+
+    def _update_ready(self, version, new, workdir, installed):
+        """Checked and unpacked: close, and let the script swap it in and start it."""
+        try:
+            updater.start_install(new, installed, workdir, ACTIVITY_LOG_PATH)
+        except Exception as e:
+            self._update_failed(f"{type(e).__name__}: {e}")
+            return
+        log_activity(f"v{version} downloaded and checked: closing so it can be put in place")
+        self.close()
+
+    def _update_failed(self, why):
+        log_error("updating", RuntimeError(why))
+        bar = getattr(self, "_update_progress", None)
+        text = (f"The update didn't work, so nothing was changed ({why}). You can get it from the download "
+                "page instead.")
+        if bar is not None:
+            try:
+                bar.set(text)
+            except Exception:
+                pass
+        w = getattr(self, "update_win", None)
+        if w is not None and w.winfo_exists():
+            Button(w, self.theme, text="Download page", kind="primary", width=140, height=40, radius=12, size=13,
+                   command=lambda: (webbrowser.open(RELEASES_PAGE), w.destroy()), bg=BG).pack(anchor="w")
+        else:
+            messagebox.showerror("Update", text, parent=self.root)
 
     def _oops(self, what, exc):
         """Something unexpected went wrong: note it in errors.log and keep going."""
@@ -3628,6 +3702,14 @@ class App:
                                     "(details are in errors.log: Settings > Open data folder)")
                 elif kind == "update":
                     self._show_update(*payload)
+                elif kind == "update_progress":
+                    bar = getattr(self, "_update_progress", None)
+                    if bar is not None:
+                        bar.set(payload)
+                elif kind == "update_ready":
+                    self._update_ready(*payload)
+                elif kind == "update_failed":
+                    self._update_failed(payload)
                 elif kind == "hotkey":
                     self._hotkey(payload)
                 else:

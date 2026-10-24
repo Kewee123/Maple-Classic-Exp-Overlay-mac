@@ -350,9 +350,19 @@ log.set_note(log.entries, "MY-PRIVATE-NOTE do not share")
 check("runs never carry a note, even with notes on the log lines",
       len(log.runs) >= 1 and all("note" not in r for r in log.runs) and "MY-PRIVATE-NOTE" not in json.dumps(log.runs))
 src = inspect.getsource(m)
-check("privacy guard: the overlay reaches the internet only to check for updates (a new place needs a look at what it sends)",
-      src.count("urlopen(") == 1 and src.count("webbrowser.open(") == 2 and "requests." not in src and "socket." not in src
-      and "pages.dev" not in src)
+usrc = inspect.getsource(m.updater)
+check("privacy guard: the overlay goes online only for updates, from this repository's releases "
+      "(a new place needs a look at what it sends)",
+      src.count("urlopen(") == 1 and src.count("webbrowser.open(") == 3 and "requests." not in src and "socket." not in src
+      and "pages.dev" not in src and "urlopen" not in usrc and "requests." not in usrc and "socket." not in usrc)
+refused = []
+for url in ("https://example.com/x.zip", "https://github.com/someone/else/releases/download/v1/x.zip",
+            "https://github.com/guddevbaddev/Maple-Classic-Exp-Overlay/archive/main.zip"):
+    try:
+        m._github(url, 1)
+    except ValueError:
+        refused.append(url)
+check("...and it can't be pointed anywhere else", len(refused) == 3)
 check("the update check never reads the log, and the bug report never includes notes",
       "entries" not in inspect.getsource(m.check_for_update)
       and not any(w in inspect.getsource(m.App._report_text) for w in ("note_of", "notes_of", '"note"', "autolog.entries")))

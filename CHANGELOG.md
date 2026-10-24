@@ -3,6 +3,7 @@
 ## 0.9.13-beta
 
 **New**
+- **Update now:** when a new version is out, the update window has an **Update now** button. It downloads the new version for your computer (Windows or Mac) from this repository's GitHub release, checks it against the SHA-256 the release lists (and installs nothing if it doesn't match), then closes the overlay, puts the new version in place and opens it again, in a few seconds. Your log, notes and settings stay as they are. It only ever happens when you click it. (This is the last version you need to download by hand: from here on, Update now does it.)
 - **Logs for when it crashes:** the overlay now keeps a diary of what it does (`overlay.log`: when it started, what it said, any errors), and if it's ever killed outright, `crash.log` says exactly where it was. The next time it starts, it says it closed unexpectedly and offers to save the logs.
 - **Settings > Save logs** puts all of them, with the bug report's details, in one zip to send (without your computer's user name, and nothing from your EXP log or notes).
 - Cmd+Q on a Mac now closes the overlay properly (it saves your window position, and isn't taken for a crash).

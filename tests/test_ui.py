@@ -473,6 +473,77 @@ check(f"where copying doesn't work, it says to drag the file in ({said!r})", "dr
 app.card_win.destroy()
 m.PLATFORM.copy_image = real_copy
 
+# ---- Settings > Save logs: the logs in one zip, to send
+import zipfile
+m.log_error("an error for the logs test", RuntimeError(str(Path.home())))      # (a path with the user name)
+(m.DATA_DIR / "crash.log").write_text("Fatal Python error: Segmentation fault\n", encoding="utf-8")
+shown, said = [], []
+real_show, real_info = m.PLATFORM.show_file, m.messagebox.showinfo
+m.PLATFORM.show_file = shown.append
+m.messagebox.showinfo = lambda title, text, **kw: said.append(text)
+saved = app.save_logs()
+m.PLATFORM.show_file, m.messagebox.showinfo = real_show, real_info
+names = zipfile.ZipFile(saved).namelist() if saved else []
+check(f"Save logs makes one zip with the logs and the report details, and shows it ({names})",
+      shown == [saved] and {"errors.log", "crash.log", "overlay.log", "bug-report-details.txt"} <= set(names))
+everything = " ".join(zipfile.ZipFile(saved).read(n).decode("utf-8") for n in names)
+check("...without the user name, and with the crash in the details",
+      str(Path.home()) not in everything and "Segmentation fault" in everything)
+asked = []
+real_ask = m.messagebox.askyesno
+m.messagebox.askyesno = lambda title, text, **kw: asked.append(text) or False
+app.tell_last_crash()
+m.messagebox.askyesno = real_ask
+check("after a crash, the next start says so and offers to save the logs", asked and "Save logs" in asked[0])
+
+# ---- Update now: in the update window when it's the download, and what happens when it's clicked
+import time as _time
+zip_name = m.updater.asset_names("9.9.9", sys.platform == "darwin")[0]
+assets = {zip_name: "https://github.com/x/releases/download/v9.9.9/z", "SHA256SUMS.txt": "https://github.com/x/s"}
+real_where, real_prepare, real_install, real_close = (m.updater.installed_location, m.updater.prepare,
+                                                      m.updater.start_install, app.close)
+texts = lambda w: " ".join(str(getattr(c, "text", "")) for c in w.winfo_children() + [
+    g for f in w.winfo_children() for g in f.winfo_children()])
+m.updater.installed_location = lambda: None
+app._show_update(("9.9.9", "Fixes.", assets), True, None)
+root.update()
+check("running from source, there's no Update now (only the download page)", "Update now" not in texts(app.update_win))
+app.update_win.destroy()
+m.updater.installed_location = lambda: Path(tempfile.mkdtemp())
+app._show_update(("9.9.9", "Fixes.", assets), True, None)
+root.update()
+check("the download gets an Update now button", "Update now" in texts(app.update_win))
+installs, closed = [], []
+m.updater.prepare = lambda version, assets, opener, progress, mac: (progress(5_000_000, 60_000_000), ("NEW", "WORK"))[1]
+m.updater.start_install = lambda new, installed, work, log: installs.append((new, work))
+app.close = lambda: closed.append(True)
+app._update_progress = m.tk.StringVar(value="")
+app.start_update("9.9.9", assets, Path("INSTALLED"))
+for _ in range(50):
+    root.update()
+    app._pump()
+    if closed:
+        break
+    _time.sleep(0.05)
+check(f"Update now downloads, then closes so the new version is put in place ({installs})",
+      installs == [("NEW", "WORK")] and closed == [True])
+def failing(*a, **k):
+    raise m.updater.UpdateError("the download doesn't match its SHA-256")
+m.updater.prepare = failing
+closed.clear()
+app.start_update("9.9.9", assets, Path("INSTALLED"))
+for _ in range(50):
+    root.update()
+    app._pump()
+    if "didn't work" in app._update_progress.get():
+        break
+    _time.sleep(0.05)
+check(f"a failed update changes nothing and says so ({app._update_progress.get()[:60]}...)",
+      not closed and "nothing was changed" in app._update_progress.get())
+app.update_win.destroy()
+m.updater.installed_location, m.updater.prepare, m.updater.start_install, app.close = (real_where, real_prepare,
+                                                                                        real_install, real_close)
+
 check("the typeface is the bundled one, or it fell back cleanly", app._own_fonts in (True, False) and bool(app.theme.fam["extra"]))
 app.close()
 

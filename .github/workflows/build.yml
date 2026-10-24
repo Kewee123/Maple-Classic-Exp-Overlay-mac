@@ -88,6 +88,7 @@ jobs:
           python tests/test_screen.py
           python tests/test_ocr.py
           python tests/test_report.py
+          python tests/test_update.py
       - name: Build
         run: python build.py
       - name: Keep the unsigned build
@@ -228,6 +229,7 @@ jobs:
           python tests/test_screen.py
           python tests/test_ocr.py
           python tests/test_report.py
+          python tests/test_update.py
       - name: Build Tesseract for macOS 14.0 (Homebrew's is built for the macOS it's on)
         # The app's Tesseract must run on every macOS the app does. Homebrew builds Tesseract
         # for the runner's own macOS (14.8 here), so it's built from Tesseract's own source,

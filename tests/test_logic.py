@@ -735,5 +735,21 @@ for e in (1084, 1084):                                   # levels up, 1% into Lv
 check(f"a level-up counts each part as a % of its own level ({tr.pct_gained:.2f}%)",
       tr.levels == 1 and abs(tr.pct_gained - 2.0) < 0.01)
 
+# ---- a crash while starting is written down and shown, not a silent close (the download has no console)
+shown = []
+real_main, real_alert = m._main, m.PLATFORM.alert
+m._main = lambda: 1 / 0
+m.PLATFORM.alert = lambda title, text: shown.append(text)
+try:
+    m.main()
+    crashed = False
+except ZeroDivisionError:
+    crashed = True
+m._main, m.PLATFORM.alert = real_main, real_alert
+logged = m.ERROR_LOG_PATH.read_text(encoding="utf-8") if m.ERROR_LOG_PATH.exists() else ""
+check(f"a crash while starting goes in errors.log and on screen ({shown[:1]})",
+      crashed and "starting the overlay" in logged and "ZeroDivisionError" in logged
+      and shown and "errors.log" in shown[0])
+
 print("\nALL PASSED" if not failures else f"\n{failures} FAILED")
 sys.exit(1 if failures else 0)

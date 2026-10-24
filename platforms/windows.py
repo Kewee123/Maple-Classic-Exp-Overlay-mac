@@ -44,6 +44,16 @@ _GetForegroundWindow = _api(_user32.GetForegroundWindow, wintypes.HWND)
 _RegisterHotKey = _api(_user32.RegisterHotKey, wintypes.BOOL, wintypes.HWND, ctypes.c_int, wintypes.UINT,
                        wintypes.UINT)
 _UnregisterHotKey = _api(_user32.UnregisterHotKey, wintypes.BOOL, wintypes.HWND, ctypes.c_int)
+_OpenClipboard = _api(_user32.OpenClipboard, wintypes.BOOL, wintypes.HWND)
+_EmptyClipboard = _api(_user32.EmptyClipboard, wintypes.BOOL)
+_SetClipboardData = _api(_user32.SetClipboardData, wintypes.HANDLE, wintypes.UINT, wintypes.HANDLE)
+_CloseClipboard = _api(_user32.CloseClipboard, wintypes.BOOL)
+_RegisterClipboardFormat = _api(_user32.RegisterClipboardFormatW, wintypes.UINT, wintypes.LPCWSTR)
+_GlobalAlloc = _api(_kernel32.GlobalAlloc, wintypes.HGLOBAL, wintypes.UINT, ctypes.c_size_t)
+_GlobalLock = _api(_kernel32.GlobalLock, wintypes.LPVOID, wintypes.HGLOBAL)
+_GlobalUnlock = _api(_kernel32.GlobalUnlock, wintypes.BOOL, wintypes.HGLOBAL)
+_GlobalFree = _api(_kernel32.GlobalFree, wintypes.HGLOBAL, wintypes.HGLOBAL)
+_CF_DIB, _GMEM_MOVEABLE = 8, 0x0002
 _SetTimer = _api(_user32.SetTimer, ctypes.c_size_t, wintypes.HWND, ctypes.c_size_t, wintypes.UINT, ctypes.c_void_p)
 _GetMessage = _api(_user32.GetMessageW, wintypes.BOOL, ctypes.POINTER(wintypes.MSG), wintypes.HWND,
                    wintypes.UINT, wintypes.UINT)
@@ -278,3 +288,47 @@ class WindowsPlatform(Platform):
 
     def show_file(self, path):
         subprocess.Popen(["explorer", f"/select,{path}"])
+
+    def alert(self, title, text):
+        try:
+            ctypes.windll.user32.MessageBoxW(None, text, title, 0x10)        # MB_ICONERROR
+        except Exception:
+            super().alert(title, text)
+
+    def copy_image(self, path):
+        # As a bitmap (what every program pastes, Discord included) and as PNG (sharper, for those
+        # that take it). The clipboard owns the memory once it's set; until then it's freed here.
+        import io
+        from PIL import Image
+        with Image.open(path) as img:
+            rgb = img.convert("RGB")
+        bmp = io.BytesIO()
+        rgb.save(bmp, "BMP")
+        formats = [(_CF_DIB, bmp.getvalue()[14:]),                   # (a DIB is a .bmp without its file header)
+                   (_RegisterClipboardFormat("PNG"), Path(path).read_bytes())]
+        for _ in range(10):                                         # another program may have it open
+            if _OpenClipboard(None):
+                break
+            threading.Event().wait(0.05)
+        else:
+            return False
+        try:
+            _EmptyClipboard()
+            done = 0
+            for fmt, data in formats:
+                handle = _GlobalAlloc(_GMEM_MOVEABLE, len(data))
+                if not handle:
+                    continue
+                ptr = _GlobalLock(handle)
+                if not ptr:
+                    _GlobalFree(handle)
+                    continue
+                ctypes.memmove(ptr, data, len(data))
+                _GlobalUnlock(handle)
+                if _SetClipboardData(fmt, handle):
+                    done += 1
+                else:
+                    _GlobalFree(handle)
+            return done > 0
+        finally:
+            _CloseClipboard()

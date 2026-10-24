@@ -428,6 +428,51 @@ if app.hotkeys.supported:
     app.settings_win = None
     check("closing Settings leaves hotkeys working", getattr(app.hotkeys, "_paused", True) is False)
 
+# ---- the Share button: a picture of the session, copied to paste into Discord
+copied = []
+real_copy = m.PLATFORM.copy_image
+m.PLATFORM.copy_image = lambda path: copied.append(path) or True
+t = app.tracker
+t.rate = lambda: None
+said = []
+real_info = m.messagebox.showinfo
+m.messagebox.showinfo = lambda title, text, **kw: said.append(text)
+app.share_card()                                          # nothing yet: says so (no card)
+m.messagebox.showinfo = real_info
+root.update()
+check("Share before there's an EXP/hr makes no card, and says why", not copied and "Nothing to share yet" in said[0])
+t.exp, t.pct, t.req, t.gained, t.levels = 31204, 54.2, 57600, 412300, 2
+t.rate = lambda: 72566.0
+t.elapsed = lambda: 3753.0
+app.map_name, app.level, app.job, app.party = "Sleepywood Dungeon IV", 35, "Hermit", 4
+app.share_card()
+root.update()
+card = m.DATA_DIR / "share-card.png"
+check("Share makes the card and copies it", copied == [card] and card.is_file())
+from PIL import Image
+with Image.open(card) as img:
+    check(f"the card is a big, sharp picture ({img.size})", img.size == (1280, 688))
+check("...and shows it, saying it was copied", app.card_win.winfo_exists() and "Copied!" in " ".join(
+    str(w.cget("textvariable") and w.getvar(w.cget("textvariable"))) for w in app.card_win.winfo_children()
+    if w.winfo_class() == "Label"))
+stats = app._card_stats()
+check("the card shows EXP/hr, mesos/hr, the map, level, class and party",
+      (stats.exp_hr, stats.map_name, stats.level, stats.job, stats.party, stats.elapsed)
+      == ("72,566", "Sleepywood Dungeon IV", 35, "Hermit", "4ppl party", "1:02:33"))
+check("...and nothing from the log's notes, or who you are",
+      not any(f in m.CardStats.__dataclass_fields__ for f in ("note", "notes", "name", "character")))
+app.pq_mode = True
+check("in PQ mode, the card says Party Quest", app._card_stats().map_name == m.PQ_MAP)
+app.pq_mode = False
+m.PLATFORM.copy_image = lambda path: False
+app.share_card()
+root.update()
+said = " ".join(w.getvar(w.cget("textvariable")) for w in app.card_win.winfo_children()
+               if w.winfo_class() == "Label" and w.cget("textvariable"))
+check(f"where copying doesn't work, it says to drag the file in ({said!r})", "drag the picture" in said)
+app.card_win.destroy()
+m.PLATFORM.copy_image = real_copy
+
 check("the typeface is the bundled one, or it fell back cleanly", app._own_fonts in (True, False) and bool(app.theme.fam["extra"]))
 app.close()
 

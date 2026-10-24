@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.12-beta
+
+**New**
+- **Share button** (bottom right): makes a picture card of your session, in the overlay's gold look, with your EXP/hr (and its trend line), mesos/hr, time tracked, how much of a level you get per hour, and the map, level, class and party size. It's copied for you: paste it into Discord with Ctrl+V (Cmd+V on a Mac). It also opens in a window to copy again or find the file. Never your character's name, and the overlay doesn't send it anywhere.
+
+**Fixed**
+- **Mac:** in 0.9.11 the app's own Tesseract (which reads the map name and class) needed macOS 15, so on macOS 14 those were never read. The Mac app's Tesseract (5.5.3) is now built from its own source for macOS 14.0, and the build checks that every part of the app runs on 14.0.
+- If the overlay can't start, it now says why (and writes it in errors.log) instead of closing without a word.
+
 ## 0.9.11-beta
 
 **New**

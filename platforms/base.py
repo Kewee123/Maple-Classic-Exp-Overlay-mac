@@ -132,6 +132,23 @@ class Platform(ABC):
     def show_file(self, path):
         """Opens the file's folder in the OS's file browser, with the file selected."""
 
+    def alert(self, title, text):
+        """A message box that needs no window of the overlay's own (when it couldn't start)."""
+        try:
+            import tkinter as tk
+            from tkinter import messagebox
+            root = tk.Tk()
+            root.withdraw()
+            messagebox.showerror(title, text, parent=root)
+            root.destroy()
+        except Exception:
+            print(f"{title}: {text}")
+
+    def copy_image(self, path):
+        """Puts the picture in this PNG file on the clipboard, to paste into Discord or anywhere
+        else. True if it worked (where it can't, the overlay shows the file instead)."""
+        return False
+
     def dpi_awareness(self):
         """How this program handles screen scaling, in words, for bug reports (None if n/a)."""
         return None

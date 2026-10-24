@@ -50,6 +50,7 @@ import ocr
 import report
 from platforms import create_platform, hotkey_text, parse_hotkey
 from report import Health, Recent
+from share_card import CardStats, make_card
 from ui_gfx import INK, TEXT_DIM
 from ui_kit import (ACCENT, ACCENT_SOFT, BAD, BG, DIM, FAINT, FG, GOOD, LINE, LIST_BG, LIST_BG2, LIST_PART,  # noqa: F401
                     ON_ACCENT, RAISED, RAISED_HI, SELECT, SURFACE, WARN, setup_ttk)
@@ -61,7 +62,7 @@ PLATFORM = create_platform()
 PLATFORM.setup_process()
 cv2.setNumThreads(1)
 
-VERSION = "0.9.11-beta"
+VERSION = "0.9.12-beta"
 WINDOW_TITLE = "Maple Classic Exp Overlay"    # the version is shown in Settings
 OLD_TITLES = ("Maple EXP/hr",)               # what versions before 0.9.3 were called
 
@@ -2720,7 +2721,7 @@ class App:
         self.theme = Theme(self.root, self._px_per_pt * 0.75, ASSETS / "fonts", self._own_fonts, PLATFORM.font)
         callbacks = dict(settings=self.open_settings, compact=lambda: self.set_compact(not self.compact),
                          log=self.toggle_log, start=self.toggle, reset=self.reset, logging=self._logging_clicked,
-                         menu=self._open_menu, details=self._details_changed)
+                         menu=self._open_menu, share=self.share_card, details=self._details_changed)
         self.view = self.main = MainView(self.root, self.theme, callbacks, details=bool(self.cfg.get("details")))
         self.view.grid(row=0, column=0, sticky="n")
         if self.compact:
@@ -3891,6 +3892,84 @@ class App:
         Button(bottom, th, text="Something's wrong? Report a bug", kind="secondary", width=240, height=36, radius=10,
                size=12, command=lambda: self.report_bug(win), bg=BG).pack(side="right")
 
+    # ---- share card
+    def _card_stats(self):
+        """What the share card shows (see share_card.py), or None before there's an EXP/hr."""
+        t, el = self.tracker, self.tracker.elapsed()
+        rate = t.rate()
+        if rate is None:
+            return None
+        return CardStats(
+            exp_hr=fmt_num(rate), mesos_hr=fmt_num(self.meso.per_hour(el)),
+            map_name=PQ_MAP if self.pq_mode else self.map_name or "",
+            level=level_for_req(t.req) or self.level, job=self.job, party=party_label(self.party),
+            pct_hr=f"{rate / t.req * 100:.2f}%" if t.req else "", elapsed=fmt_dur(el),
+            trend=list(self._trend), footer=f"{WINDOW_TITLE} \u00b7 github.com/{GITHUB_REPO}")
+
+    def share_card(self):
+        """The Share button: a picture of this session, copied to paste into Discord, and shown."""
+        stats = self._card_stats()
+        if not stats:
+            messagebox.showinfo("Share", "Nothing to share yet: press Start and get some EXP first.", parent=self.root)
+            return
+        path = DATA_DIR / "share-card.png"
+        try:
+            DATA_DIR.mkdir(parents=True, exist_ok=True)
+            make_card(stats, ASSETS / "fonts").save(path)
+        except Exception as e:
+            log_error("making the share card", e)
+            self.status.set("Couldn't make the share card (details are in errors.log).")
+            return
+        self._show_card(path, self._copy_card(path))
+
+    def _copy_card(self, path):
+        try:
+            copied = PLATFORM.copy_image(path)
+        except Exception as e:
+            log_error("copying the share card", e)
+            copied = False
+        paste = "Cmd+V" if sys.platform == "darwin" else "Ctrl+V"
+        self.status.set(f"Share card copied: paste it into Discord with {paste}." if copied
+                        else "Share card saved. Drag the file into Discord to share it.")
+        return copied
+
+    def _show_card(self, path, copied):
+        """The card, with what to do with it."""
+        old = getattr(self, "card_win", None)
+        if old is not None and old.winfo_exists():
+            old.destroy()
+        th = self.theme
+        w = self.card_win = tk.Toplevel(self.root)
+        w.title("Share card")
+        w.configure(bg=BG, padx=th.px(18), pady=th.px(16))
+        w.resizable(False, False)
+        w.transient(self.root)
+        w.attributes("-topmost", bool(self.cfg["topmost"]))
+        for delay in (0, 150, 800):
+            w.after(delay, lambda: PLATFORM.style_window(w, INK, TEXT_DIM) if w.winfo_exists() else None)
+        with Image.open(path) as img:
+            width = th.px(560)
+            w._img = ImageTk.PhotoImage(img.resize((width, round(img.height * width / img.width)), Image.LANCZOS))
+        tk.Label(w, image=w._img, bg=BG).pack()
+        paste = "Cmd+V" if sys.platform == "darwin" else "Ctrl+V"
+        note = tk.StringVar(value=f"Copied! Paste it into Discord (or anywhere) with {paste}." if copied else
+                            "Couldn't copy it here: click Show file and drag the picture into Discord.")
+        tk.Label(w, textvariable=note, bg=BG, fg=FG, font=th.font("semibold", 12)).pack(anchor="w", pady=(th.px(12), 0))
+        tk.Label(w, text="It shows your map, level, class and numbers. Never your character's name.",
+                 bg=BG, fg=DIM, font=th.font("regular", 11)).pack(anchor="w", pady=(th.px(2), 0))
+        buttons = tk.Frame(w, bg=BG)
+        buttons.pack(fill="x", pady=(th.px(14), 0))
+
+        def again():
+            note.set(f"Copied again: paste it with {paste}." if self._copy_card(path) else
+                     "Couldn't copy it: click Show file and drag the picture into Discord.")
+        Button(buttons, th, text="Copy again", kind="primary", width=120, height=38, radius=11, size=12,
+               command=again, bg=BG).pack(side="left")
+        Button(buttons, th, text="Show file", kind="secondary", width=110, height=38, radius=11, size=12,
+               command=lambda: PLATFORM.show_file(path), bg=BG).pack(side="left", padx=(th.px(8), 0))
+        Button(buttons, th, text="Close", kind="secondary", width=90, height=38, radius=11, size=12,
+               command=w.destroy, bg=BG).pack(side="right")
+
     # ---- bug reports
     def report_bug(self, parent=None):
         """Opens a new GitHub issue in the browser, filled in with what the tracker knows, and
@@ -4121,6 +4200,18 @@ class App:
 
 
 def main():
+    """Starts the overlay. If it can't, the reason goes in errors.log and on screen: a program
+    without a console (the download) would otherwise just close without a word."""
+    try:
+        _main()
+    except Exception as e:
+        log_error("starting the overlay", e)
+        PLATFORM.alert(WINDOW_TITLE, f"{WINDOW_TITLE} couldn't start: {type(e).__name__}: {e}\n\n"
+                       f"The details are in errors.log, in {DATA_DIR}. Please include them in a bug report.")
+        raise
+
+
+def _main():
     global tesseract_ok, TESS
     # Only one copy at a time (per data folder): two copies would each keep their own log.
     # If it's already running, bring that window to the front instead. (The lock keeps the old

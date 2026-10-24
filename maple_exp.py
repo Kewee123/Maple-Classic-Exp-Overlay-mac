@@ -15,6 +15,7 @@ inside %APPDATA% on Windows, ~/Library/Application Support on macOS (named after
 name, Maple EXP/hr, so updating keeps them). It runs on Windows and macOS: what differs
 between them is in platforms/.
 """
+import faulthandler
 import hashlib
 import hmac
 import json
@@ -23,6 +24,7 @@ import os
 
 for _name in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
     os.environ.setdefault(_name, "1")        # (before numpy is imported)
+import platform
 import queue
 import re
 import secrets
@@ -62,7 +64,7 @@ PLATFORM = create_platform()
 PLATFORM.setup_process()
 cv2.setNumThreads(1)
 
-VERSION = "0.9.12-beta"
+VERSION = "0.9.13-beta"
 WINDOW_TITLE = "Maple Classic Exp Overlay"    # the version is shown in Settings
 OLD_TITLES = ("Maple EXP/hr",)               # what versions before 0.9.3 were called
 
@@ -75,6 +77,9 @@ DATA_DIR = Path(os.environ.get("MAPLE_EXP_DATA") or PLATFORM.data_root() / "Mapl
 
 CONFIG_PATH = DATA_DIR / "config.json"
 ERROR_LOG_PATH = DATA_DIR / "errors.log"
+ACTIVITY_LOG_PATH = DATA_DIR / "overlay.log"    # what it did, as it did it (see log_activity)
+CRASH_LOG_PATH = DATA_DIR / "crash.log"         # where it was if it was killed (see start_crash_log)
+RUNNING_PATH = DATA_DIR / "running.flag"        # there while it runs: still there at start = it crashed
 TEMPLATE_PATH = ASSETS / "digits.npz"
 ICON_PATH = ASSETS / "icon.ico"
 POLL_SECONDS = 1.5          # how often to read the EXP bar
@@ -143,6 +148,64 @@ def log_error(what, exc=None):
         details = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)) if exc else ""
         with open(ERROR_LOG_PATH, "a", encoding="utf-8") as f:
             f.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] v{VERSION}: {what}\n{details}\n")
+    except Exception:
+        pass
+    log_activity(f"Error {what}: {type(exc).__name__}: {exc}" if exc else f"Error {what}")
+
+
+def _rotate(path, limit):
+    """Keeps a log file small: past `limit` bytes it becomes <name>.old.log (one kept)."""
+    if path.exists() and path.stat().st_size > limit:
+        os.replace(path, path.with_suffix(".old.log"))
+
+
+def log_activity(text):
+    """A line in overlay.log: the overlay's diary (starts, what the status line said, errors,
+    closes), so when something goes wrong, what led up to it is on file. Nothing personal:
+    the same things the status line shows."""
+    try:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        _rotate(ACTIVITY_LOG_PATH, 500_000)
+        with open(ACTIVITY_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {text}\n")
+    except Exception:
+        pass
+
+
+_crash_file = None                  # kept open: faulthandler writes to it when the program is killed
+
+
+def start_crash_log():
+    """Makes sure a crash leaves a trace, even one that kills the program outright (inside a
+    system library, where Python can't catch anything): faulthandler then writes where each
+    thread was to crash.log. Errors nothing caught go in errors.log. Returns True if the last
+    run didn't close normally (it crashed, or was killed)."""
+    global _crash_file
+    crashed_before = RUNNING_PATH.exists()
+    try:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        _rotate(CRASH_LOG_PATH, 300_000)
+        _crash_file = open(CRASH_LOG_PATH, "a", encoding="utf-8")
+        _crash_file.write(f"\n--- v{VERSION} started {time.strftime('%Y-%m-%d %H:%M:%S')} ({PLATFORM.version()})\n")
+        _crash_file.flush()
+        faulthandler.enable(file=_crash_file, all_threads=True)
+        RUNNING_PATH.write_text(time.strftime("%Y-%m-%d %H:%M:%S"), encoding="utf-8")
+    except Exception as e:
+        log_error("starting the crash log", e)
+    sys.excepthook = lambda kind, exc, tb: (log_error("an error nothing caught", exc), sys.__excepthook__(kind, exc, tb))
+    threading.excepthook = lambda a: log_error(
+        f"an error nothing caught, in {a.thread.name if a.thread else 'a thread'}", a.exc_value)
+    log_activity(f"=== v{VERSION} started on {PLATFORM.version()}, Python {platform.python_version()}, "
+                 + ("the download" if getattr(sys, "frozen", False) else "from source")
+                 + (". The last run didn't close normally." if crashed_before else ""))
+    return crashed_before
+
+
+def end_crash_log():
+    """It's closing normally: next time won't say it crashed."""
+    log_activity("=== closed normally")
+    try:
+        RUNNING_PATH.unlink(missing_ok=True)
     except Exception:
         pass
 
@@ -2635,7 +2698,7 @@ class App:
         self.last_mesos = None
         self.rejected = 0
         self.started, self.cpu0 = time.monotonic(), time.process_time()
-        self.recent, self.health = Recent(40, self.started), Health()      # for bug reports
+        self.recent, self.health = Recent(40, self.started, sink=log_activity), Health()   # for bug reports
         self.autolog = AutoLog(self.cfg["gap_seconds"])
         self.map_name = None
         self.level = None
@@ -2677,6 +2740,7 @@ class App:
         root.configure(bg=BG)
         root.resizable(False, False)
         root.protocol("WM_DELETE_WINDOW", self.close)
+        root.createcommand("tk::mac::Quit", self.close)      # Cmd+Q on a Mac: close properly too
         self._apply_window_settings()
         self._restore_position()
 
@@ -3311,6 +3375,13 @@ class App:
                command=lambda: self.check_updates(manual=True), bg=BG).pack(side="left", padx=(px(8), 0))
         Button(buttons, th, text="Report a bug", kind="secondary", width=116, height=38, radius=11, size=12,
                command=lambda: self.report_bug(w), bg=BG).pack(side="left", padx=(px(8), 0))
+        logs = tk.Frame(body, bg=BG)
+        logs.pack(fill="x", pady=(px(8), 0))
+        Button(logs, th, text="Save logs", kind="secondary", width=104, height=38, radius=11, size=12,
+               command=lambda: self.save_logs(w), bg=BG).pack(side="left")
+        tk.Label(logs, text="Puts what the overlay wrote down (errors, crashes, what it was doing) in one zip, to send "
+                 "when something goes wrong.", wraplength=wrap - px(120), justify="left", bg=BG, fg=DIM,
+                 font=th.font("regular", 10)).pack(side="left", padx=(px(10), 0))
         tk.Label(body, text=f"Your log, notes and settings are saved in {DATA_DIR}", wraplength=wrap, justify="left",
                  bg=BG, fg=FAINT, font=th.font("regular", 10)).pack(anchor="w", pady=(px(8), 0))
         tk.Label(body, text=f"{WINDOW_TITLE} v{VERSION}. This is a beta: it's still being improved.", bg=BG, fg=FAINT,
@@ -3892,6 +3963,50 @@ class App:
         Button(bottom, th, text="Something's wrong? Report a bug", kind="secondary", width=240, height=36, radius=10,
                size=12, command=lambda: self.report_bug(win), bg=BG).pack(side="right")
 
+    # ---- logs
+    LOG_FILES = ("overlay.log", "overlay.old.log", "errors.log", "errors.old.log", "crash.log", "crash.old.log")
+
+    def save_logs(self, parent=None):
+        """Settings > Save logs: the overlay's logs, plus the bug report's details, in one zip in
+        the data folder (logs/), shown in the file browser. Without the Windows/Mac user name;
+        nothing from the EXP log or its notes."""
+        import zipfile
+        parent = parent or self.root
+        stamp = time.strftime("%Y-%m-%d_%H-%M-%S")
+        path = DATA_DIR / "logs" / f"overlay-logs-{stamp}.zip"
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
+                for name in self.LOG_FILES:
+                    f = DATA_DIR / name
+                    if f.is_file():
+                        z.writestr(name, self._private(f.read_text(encoding="utf-8", errors="replace")))
+                z.writestr("bug-report-details.txt", self._private(report.details(self._report_facts())))
+        except Exception as e:
+            log_error("saving the logs", e)
+            messagebox.showerror("Save logs", f"Couldn't save the logs: {e}", parent=parent)
+            return None
+        log_activity(f"Logs saved: {path.name}")
+        try:
+            PLATFORM.show_file(path)
+        except Exception as e:
+            log_error("showing the saved logs", e)
+        messagebox.showinfo("Save logs", f"Saved: {path.name}\n\nIt's in the folder that just opened (the logs "
+                            "folder in the overlay's data folder). Send that file, or attach it to a bug report.",
+                            parent=parent)
+        return path
+
+    def tell_last_crash(self):
+        """At start, after a run that didn't close normally."""
+        self.status.set("Last time the overlay closed unexpectedly. Settings > Save logs puts what happened in a zip.")
+        if messagebox.askyesno(
+                "The overlay closed unexpectedly",
+                "The last time it ran, the overlay closed without being told to (it crashed, or was "
+                "stopped).\n\nWhat it was doing just before is written down. Save it in a zip now, to "
+                "send to whoever helps you fix it? (You can also do it later: Settings > Save logs.)",
+                parent=self.root):
+            self.save_logs()
+
     # ---- share card
     def _card_stats(self):
         """What the share card shows (see share_card.py), or None before there's an EXP/hr."""
@@ -4021,9 +4136,13 @@ class App:
                 monitors = [(m_["width"], m_["height"]) for m_ in sct.monitors[1:]]
         except Exception as e:
             log_error("listing the screens for a bug report", e)
-        errors = ""
+        errors = crashes = ""
         try:
             errors = self._private(ERROR_LOG_PATH.read_text(encoding="utf-8", errors="replace"))[-2500:]
+        except Exception:
+            pass
+        try:
+            crashes = self._private(CRASH_LOG_PATH.read_text(encoding="utf-8", errors="replace"))[-2500:]
         except Exception:
             pass
         now = time.monotonic()
@@ -4055,7 +4174,7 @@ class App:
             "tracker": f"paused: {self.session.waiting or 'no'}, gained {fmt_num(t.gained)} EXP in {fmt_dur(t.elapsed())}",
             "settings": {"mode": self.reader.mode, **{k: self.cfg.get(k) for k in ("gap_seconds", "transparency", "topmost", "ui_scale",
                                                       "compact", "hotkeys_on", "check_updates")}},
-            "timeline": [self._private(x) for x in self.recent.lines()], "errors": errors,
+            "timeline": [self._private(x) for x in self.recent.lines()], "errors": errors, "crashes": crashes,
         }
 
     def _worker_alive(self):
@@ -4188,6 +4307,7 @@ class App:
             self.cfg["log_size"] = size if size != natural else None
 
     def close(self):
+        end_crash_log()
         self._note_flush()
         self.stop_evt.set()
         try:
@@ -4219,14 +4339,18 @@ def _main():
     key = hashlib.md5(str(DATA_DIR).lower().encode()).hexdigest()[:12]
     if not PLATFORM.claim_single_instance(key, WINDOW_TITLE, OLD_TITLES):
         return
+    crashed_before = start_crash_log()
     PLATFORM.ask_permissions()
     move_old_data()
     tess = find_tesseract()
     if tess:
         TESS = ocr.Tesseract(tess)
         tesseract_ok = True
+    log_activity(f"Tesseract: {tess or 'not found'}")
     root = tk.Tk()
-    App(root, DigitTemplates.load())
+    app = App(root, DigitTemplates.load())
+    if crashed_before:
+        root.after(1500, app.tell_last_crash)
     root.mainloop()
 
 

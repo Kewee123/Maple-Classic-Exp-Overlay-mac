@@ -161,6 +161,8 @@ Every version is tested against thousands of misread numbers, and against real s
 
 ## Something not working?
 
+**Did it close by itself?** Open it again: it says it closed unexpectedly, and offers to save what happened. You can also do it any time in ⚙ with **Save logs**: it makes one zip (in the `logs` folder of the data folder) with `overlay.log` (what it was doing), `errors.log` and `crash.log` (where it was when it closed). Send that zip, or attach it to a bug report.
+
 **Click View capture first.** It shows exactly what the overlay read, with a box around every digit:
 
 ![View capture](docs/screenshot-capture.png)

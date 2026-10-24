@@ -473,6 +473,29 @@ check(f"where copying doesn't work, it says to drag the file in ({said!r})", "dr
 app.card_win.destroy()
 m.PLATFORM.copy_image = real_copy
 
+# ---- Settings > Save logs: the logs in one zip, to send
+import zipfile
+m.log_error("an error for the logs test", RuntimeError(str(Path.home())))      # (a path with the user name)
+(m.DATA_DIR / "crash.log").write_text("Fatal Python error: Segmentation fault\n", encoding="utf-8")
+shown, said = [], []
+real_show, real_info = m.PLATFORM.show_file, m.messagebox.showinfo
+m.PLATFORM.show_file = shown.append
+m.messagebox.showinfo = lambda title, text, **kw: said.append(text)
+saved = app.save_logs()
+m.PLATFORM.show_file, m.messagebox.showinfo = real_show, real_info
+names = zipfile.ZipFile(saved).namelist() if saved else []
+check(f"Save logs makes one zip with the logs and the report details, and shows it ({names})",
+      shown == [saved] and {"errors.log", "crash.log", "overlay.log", "bug-report-details.txt"} <= set(names))
+everything = " ".join(zipfile.ZipFile(saved).read(n).decode("utf-8") for n in names)
+check("...without the user name, and with the crash in the details",
+      str(Path.home()) not in everything and "Segmentation fault" in everything)
+asked = []
+real_ask = m.messagebox.askyesno
+m.messagebox.askyesno = lambda title, text, **kw: asked.append(text) or False
+app.tell_last_crash()
+m.messagebox.askyesno = real_ask
+check("after a crash, the next start says so and offers to save the logs", asked and "Save logs" in asked[0])
+
 check("the typeface is the bundled one, or it fell back cleanly", app._own_fonts in (True, False) and bool(app.theme.fam["extra"]))
 app.close()
 

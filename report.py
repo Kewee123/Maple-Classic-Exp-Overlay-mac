@@ -19,9 +19,10 @@ def clock(seconds):
 class Recent:
     """The last things that happened, newest last, with repeats counted instead of listed."""
 
-    def __init__(self, size=40, start=None):
+    def __init__(self, size=40, start=None, sink=None):
         self.start = time.monotonic() if start is None else start
         self.items = deque(maxlen=size)             # [first time, text, how many times in a row]
+        self.sink = sink                            # also told each new line (not repeats): overlay.log
 
     def add(self, text, now=None):
         now = time.monotonic() if now is None else now
@@ -32,6 +33,8 @@ class Recent:
             self.items[-1][2] += 1
         else:
             self.items.append([now, text, 1])
+            if self.sink:
+                self.sink(text)
 
     def lines(self):
         return [f"{clock(t - self.start)}  {text}" + (f"  (x{n})" if n > 1 else "") for t, text, n in self.items]
@@ -201,4 +204,6 @@ def details(f):
     out += ["== Things that look wrong =="] + ([f"- {w}" for w in wrong] if wrong else ["- Nothing stands out."]) + [""]
     out += ["== What happened (+m:ss since the overlay started) =="] + (f.get("timeline") or ["(nothing yet)"]) + [""]
     out += ["== errors.log (the end of it) ==", (f.get("errors") or "(no errors)").strip(), ""]
+    out += ["== crash.log (the end of it: where it was when it closed by itself) ==",
+            (f.get("crashes") or "(no crashes)").strip(), ""]
     return "\n".join(out)

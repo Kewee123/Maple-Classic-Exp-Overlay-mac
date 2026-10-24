@@ -751,5 +751,38 @@ check(f"a crash while starting goes in errors.log and on screen ({shown[:1]})",
       crashed and "starting the overlay" in logged and "ZeroDivisionError" in logged
       and shown and "errors.log" in shown[0])
 
+# ---- logs: a diary of what it did, and a trace when it's killed outright
+import faulthandler
+import subprocess
+for f in (m.RUNNING_PATH, m.CRASH_LOG_PATH, m.ACTIVITY_LOG_PATH):
+    f.unlink(missing_ok=True)
+first = m.start_crash_log()
+check("a first start isn't taken for a crash", first is False and m.RUNNING_PATH.exists())
+check("...the crash log is on and says which run", faulthandler.is_enabled()
+      and f"v{m.VERSION} started" in m.CRASH_LOG_PATH.read_text(encoding="utf-8"))
+again = m.start_crash_log()                                # as if it had been killed, then started again
+check("a start after a run that didn't close normally is taken for a crash", again is True)
+m.end_crash_log()
+check("closing normally clears that", not m.RUNNING_PATH.exists() and m.start_crash_log() is False)
+m.end_crash_log()
+m.log_error("testing the diary", ValueError("boom"))
+recent = m.Recent(10, sink=m.log_activity)
+recent.add("Found your EXP bar.")
+recent.add("Found your EXP bar.")                          # (repeats aren't written again)
+diary = m.ACTIVITY_LOG_PATH.read_text(encoding="utf-8")
+check("overlay.log has the starts and closes, the status lines once each, and the errors",
+      "started on" in diary and "closed normally" in diary and diary.count("Found your EXP bar.") == 1
+      and "Error testing the diary: ValueError: boom" in diary)
+if sys.platform in ("win32", "darwin"):
+    crash_dir = tempfile.mkdtemp()
+    code = ("import sys, ctypes; sys.path.insert(0, sys.argv[1]); import maple_exp as m; "
+            "m.start_crash_log(); ctypes.string_at(0)")       # reads address 0: killed by the OS
+    run = subprocess.run([sys.executable, "-c", code, str(Path(__file__).resolve().parent.parent)],
+                         env=dict(os.environ, MAPLE_EXP_DATA=crash_dir), capture_output=True, timeout=120)
+    trace = (Path(crash_dir) / "crash.log").read_text(encoding="utf-8", errors="replace")
+    check(f"a crash that kills it outright leaves where it was in crash.log (exit {run.returncode})",
+          run.returncode != 0 and ("Fatal Python error" in trace or "fatal exception" in trace.lower()))
+    check("...and the next start knows it crashed", (Path(crash_dir) / "running.flag").exists())
+
 print("\nALL PASSED" if not failures else f"\n{failures} FAILED")
 sys.exit(1 if failures else 0)

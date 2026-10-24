@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.13-beta
+
+**New**
+- **Logs for when it crashes:** the overlay now keeps a diary of what it does (`overlay.log`: when it started, what it said, any errors), and if it's ever killed outright, `crash.log` says exactly where it was. The next time it starts, it says it closed unexpectedly and offers to save the logs.
+- **Settings > Save logs** puts all of them, with the bug report's details, in one zip to send (without your computer's user name, and nothing from your EXP log or notes).
+- Cmd+Q on a Mac now closes the overlay properly (it saves your window position, and isn't taken for a crash).
+
 ## 0.9.12-beta
 
 **New**

@@ -210,6 +210,16 @@ class MacPlatform(Platform):
     def show_file(self, path):
         subprocess.Popen(["open", "-R", str(path)])
 
+    def copy_image(self, path):
+        # AppleScript reads the file as PNG data onto the clipboard. The path goes in as an
+        # argument, never into the script's text.
+        script = ['on run argv', 'set the clipboard to (read (POSIX file (item 1 of argv)) as «class PNGf»)', 'end run']
+        args = ["osascript"] + [x for line in script for x in ("-e", line)] + [str(path)]
+        try:
+            return subprocess.run(args, capture_output=True, timeout=10).returncode == 0
+        except Exception:
+            return False
+
     def font(self, family, weight):
         mac_family, mac_weight = _FONTS.get(family, (family, None))
         return mac_family, mac_weight or weight

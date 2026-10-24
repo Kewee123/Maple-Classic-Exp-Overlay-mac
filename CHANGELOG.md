@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.12-beta
+
+**New**
+- **Share button** (bottom right): makes a picture card of your session, in the overlay's gold look, with your EXP/hr (and its trend line), mesos/hr, time tracked, how much of a level you get per hour, and the map, level, class and party size. It's copied for you: paste it into Discord with Ctrl+V (Cmd+V on a Mac). It also opens in a window to copy again or find the file. Never your character's name, and the overlay doesn't send it anywhere.
+
 ## 0.9.11-beta
 
 **New**

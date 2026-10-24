@@ -73,6 +73,7 @@ Within a few seconds it shows your level and how much EXP you have. The per-hour
 | **Select area** | Lets you drag a box around the EXP numbers, if it ever can't find them. The button then turns into **Follow game**, which goes back to finding them by itself. |
 | **View capture** | Shows exactly what it read from your screen |
 | **PQ mode** | For party quests (in the **...** menu). See [PQ mode](#pq-mode) below. |
+| **Share** | Makes a picture of your session (EXP/hr, mesos/hr, the map) and copies it, to paste into Discord. See [Sharing your session](#sharing-your-session) below. |
 | **⚙** | Settings |
 | **>** | Opens the log |
 | **Compact** | A much smaller window with just EXP/hr, when you'll level, the last 5 minutes, mesos/hr and Start/Pause. The button then says **Full**, to bring everything back. Shift+4 or double-clicking the big number does the same. |
@@ -87,6 +88,17 @@ A party quest goes through several maps, and a stage can go minutes without EXP 
 - The status at the top says **PQ** while it's tracking.
 
 It turns itself off when you close the overlay, so your normal farming isn't affected if you forget. To turn it off sooner, choose **PQ mode: on** in the menu again.
+
+### Sharing your session
+
+Click **Share** (bottom right) to show off how your farming is going. It makes a picture card in the overlay's gold-and-dark look with:
+
+- your **EXP per hour**, big and glowing, with the trend line of your session
+- your **mesos per hour** (if your inventory was open) and how long you've been tracking
+- the **map** you're on, your **level**, **class** and **party size** (in PQ mode it says "Party Quest")
+- how much of a level you're getting per hour
+
+It's **copied straight away**: click in Discord's message box and press **Ctrl+V** (**Cmd+V** on a Mac), then Enter. It also opens in a window, where **Copy again** copies it again and **Show file** shows the saved picture (`share-card.png` in the data folder), in case you'd rather drag it in. The card never shows your character's name, and nothing is sent anywhere by the overlay: you choose where to paste it.
 
 ## Hotkeys
 

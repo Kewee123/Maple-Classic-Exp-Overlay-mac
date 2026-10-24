@@ -258,6 +258,9 @@ class Gfx:
             elif name == "more":
                 for x in (5, 12, 19):
                     d.ellipse((x * u - 1.7 * u, 12 * u - 1.7 * u, x * u + 1.7 * u, 12 * u + 1.7 * u), fill=255)
+            elif name == "share":                           # an arrow up out of a tray
+                line((12, 3.5), (12, 14.5)); line((7.5, 8), (12, 3.5), (16.5, 8))
+                line((5, 12), (5, 20), (19, 20), (19, 12))
             elif name == "link":
                 line((8, 16), (16, 8)); line((9, 8), (16, 8), (16, 15))
             elif name in ("down", "up"):

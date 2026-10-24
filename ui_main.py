@@ -525,6 +525,9 @@ class MainView(tk.Frame):
         foot.columnconfigure(0, weight=1)
         self.logging = Toggle(foot, theme, "Log this run", True, cb["logging"], bg, alt="Not logging")
         self.logging.grid(row=0, column=0, sticky="w")
+        self.share_btn = Button(foot, theme, text="Share", icon="share", kind="ghost", height=30, radius=10, size=12,
+                                command=cb["share"], tip="A picture of this session to paste into Discord", bg=bg)
+        self.share_btn.grid(row=0, column=1, sticky="e")
         self.message = Message(self, theme, bg)
         self.message.grid(row=7, column=0, padx=g.px(SIDE + 2), pady=pad(2, 14), sticky="we")
         self.foot_widgets = [self.tiles_row, self.more_btn, self.details, self.reset_btn, self.menu_btn, foot]

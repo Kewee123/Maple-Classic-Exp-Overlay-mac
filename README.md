@@ -269,7 +269,7 @@ To build with exactly the packages the releases use: `py -3 -m pip install --req
 
 **The Mac download** is built the same way on a Mac: `brew install tesseract dylibbundler`, `python3 -m pip install --require-hashes -r requirements-build-mac.txt`, then `python3 build.py`. It makes `release/Maple-Classic-Exp-Overlay-v<version>-mac.zip`, with the app and its own copy of Tesseract (and the libraries it needs), signed ad hoc. The Build workflow does this too, after the Windows build, and adds the Mac zip to the same draft release.
 
-GitHub runs the logic tests on every push ([Tests workflow](.github/workflows/tests.yml)). The [Build workflow](.github/workflows/build.yml) builds the download on GitHub (Actions tab, **Build**, **Run workflow**), runs all the tests first, and signs the .exe once code signing is set up. Pushing a version tag also attests the zip and drafts the release with it; releases are only ever made that way.
+GitHub runs the logic tests on every push ([Tests workflow](.github/workflows/tests.yml)). The [Build workflow](.github/workflows/build.yml) builds the download on GitHub (Actions tab, **Build**, **Run workflow**), runs all the tests first, and signs the .exe once code signing is set up. Pushing a version tag also attests the zip and drafts the release with it, and so does **Run workflow** on `main` with **release** ticked (it makes the tag `v` + `VERSION` itself, once the build has passed); releases are only ever made those ways.
 
 **How it reads the screen:**
 - It finds the `MapleStory.exe` window, then the EXP numbers (like `12,345 [12.34%]`) in the status bar.

@@ -42,6 +42,7 @@ VERSION = re.search(r'^VERSION = "([^"]+)"', (ROOT / "maple_exp.py").read_text(e
 TESSERACT = Path(os.environ.get("TESSERACT_DIR", r"C:\Program Files\Tesseract-OCR"))
 BUILD, RELEASE = ROOT / "build", ROOT / "release"
 MAC = sys.platform == "darwin"
+MAC_MIN = (14, 0)          # the oldest macOS the Mac app runs on: no part of it may need a newer one
 
 # Parts of the libraries that are never used, left out to make the download smaller:
 # OpenCV's video player (the screen is read with mss, never from a video) and Pillow's
@@ -188,7 +189,51 @@ def check_mac_app(app):
     langs = subprocess.run([str(tess / "tesseract"), "--list-langs"], capture_output=True, text=True, env=env)
     if "eng" not in langs.stdout.split():
         sys.exit(f"The app's Tesseract doesn't run, or has no English data: {langs.stdout} {langs.stderr}")
-    print("Checked: the app's signature, and its own Tesseract (with English)")
+    too_new = [(f.relative_to(app), v) for f in app.rglob("*") if f.is_file() and not f.is_symlink()
+               for v in [macho_min_macos(f)] if v and v > MAC_MIN]
+    if too_new:
+        sys.exit(f"Parts of the app need a macOS newer than {MAC_MIN[0]}.{MAC_MIN[1]} (build it on that one): "
+                 + ", ".join(f"{p} ({v[0]}.{v[1]})" for p, v in too_new[:20]))
+    print(f"Checked: the app's signature, its own Tesseract (with English), and that it all runs on "
+          f"macOS {MAC_MIN[0]}.{MAC_MIN[1]}")
+
+
+def macho_min_macos(path):
+    """The oldest macOS (major, minor) a Mac program or library says it runs on (the newest
+    of its architectures), or None if the file isn't one. A Mac won't load one that needs a
+    newer macOS than it has, and the app just closes."""
+    import struct
+    with open(path, "rb") as f:
+        data = f.read()
+    if len(data) < 32:
+        return None
+    magic = struct.unpack(">I", data[:4])[0]
+    parts = [data]
+    if magic in (0xCAFEBABE, 0xCAFEBABF):                           # several architectures in one file
+        count = struct.unpack(">I", data[4:8])[0]
+        if count > 16:                                              # (a Java class file, not a Mac binary)
+            return None
+        parts = []
+        for i in range(count):
+            if magic == 0xCAFEBABE:
+                off, size = struct.unpack(">II", data[16 + i * 20:24 + i * 20])
+            else:
+                off, size = struct.unpack(">QQ", data[16 + i * 32:32 + i * 32])
+            parts.append(data[off:off + size])
+    found = []
+    for part in parts:
+        if len(part) < 32 or struct.unpack("<I", part[:4])[0] not in (0xFEEDFACF, 0xFEEDFACE):
+            continue
+        ncmds = struct.unpack("<I", part[16:20])[0]
+        off = 32 if part[:4] == b"\xcf\xfa\xed\xfe" else 28
+        for _ in range(ncmds):
+            cmd, size = struct.unpack("<II", part[off:off + 8])
+            if cmd in (0x32, 0x24):                                 # LC_BUILD_VERSION, LC_VERSION_MIN_MACOSX
+                v = struct.unpack("<I", part[off + (12 if cmd == 0x32 else 8):off + (16 if cmd == 0x32 else 12)])[0]
+                found.append((v >> 16, (v >> 8) & 0xFF))
+                break
+            off += size
+    return max(found) if found else None
 
 
 def make_zip(app):

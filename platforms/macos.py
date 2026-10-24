@@ -210,6 +210,15 @@ class MacPlatform(Platform):
     def show_file(self, path):
         subprocess.Popen(["open", "-R", str(path)])
 
+    def alert(self, title, text):
+        # (Tk may be what couldn't start, so AppleScript shows it. Title and text go in as arguments.)
+        script = ['on run argv', 'display alert (item 1 of argv) message (item 2 of argv) as critical', 'end run']
+        args = ["osascript"] + [x for line in script for x in ("-e", line)] + [title, text]
+        try:
+            subprocess.run(args, capture_output=True, timeout=600)
+        except Exception:
+            super().alert(title, text)
+
     def copy_image(self, path):
         # AppleScript reads the file as PNG data onto the clipboard. The path goes in as an
         # argument, never into the script's text.

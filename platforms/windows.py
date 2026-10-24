@@ -289,6 +289,12 @@ class WindowsPlatform(Platform):
     def show_file(self, path):
         subprocess.Popen(["explorer", f"/select,{path}"])
 
+    def alert(self, title, text):
+        try:
+            ctypes.windll.user32.MessageBoxW(None, text, title, 0x10)        # MB_ICONERROR
+        except Exception:
+            super().alert(title, text)
+
     def copy_image(self, path):
         # As a bitmap (what every program pastes, Discord included) and as PNG (sharper, for those
         # that take it). The clipboard owns the memory once it's set; until then it's freed here.

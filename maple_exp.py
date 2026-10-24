@@ -4200,6 +4200,18 @@ class App:
 
 
 def main():
+    """Starts the overlay. If it can't, the reason goes in errors.log and on screen: a program
+    without a console (the download) would otherwise just close without a word."""
+    try:
+        _main()
+    except Exception as e:
+        log_error("starting the overlay", e)
+        PLATFORM.alert(WINDOW_TITLE, f"{WINDOW_TITLE} couldn't start: {type(e).__name__}: {e}\n\n"
+                       f"The details are in errors.log, in {DATA_DIR}. Please include them in a bug report.")
+        raise
+
+
+def _main():
     global tesseract_ok, TESS
     # Only one copy at a time (per data folder): two copies would each keep their own log.
     # If it's already running, bring that window to the front instead. (The lock keeps the old

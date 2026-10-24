@@ -192,6 +192,38 @@ if sys.platform in ("win32", "darwin"):
               and not (installed / f"{u.NAME}.exe.old").exists() and not work.exists())
     check(f"the update is noted in the log ({log.read_text(errors='replace').strip() if log.exists() else 'no log'})",
           log.exists() and "updated" in log.read_text(errors="replace"))
+
+    # ...and the way a real update starts it: in the background, while the overlay is still open
+    import time
+    root2 = Path(tempfile.mkdtemp())
+    log2, work2 = root2 / "update.log", root2 / "work"
+    overlay = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(3)"])     # stands in for the overlay
+    if MAC:
+        installed2 = root2 / f"{u.NAME}.app"
+        (installed2 / "Contents").mkdir(parents=True)
+        (installed2 / "Contents" / "v.txt").write_text("old")
+        new2 = work2 / "new" / u.NAME / f"{u.NAME}.app"
+        (new2 / "Contents").mkdir(parents=True)
+        (new2 / "Contents" / "v.txt").write_text("new")
+        target = installed2 / "Contents" / "v.txt"
+    else:
+        installed2 = root2 / u.NAME
+        (installed2 / "_internal").mkdir(parents=True)
+        (installed2 / f"{u.NAME}.exe").write_text("old")
+        new2 = work2 / "new" / u.NAME
+        (new2 / "_internal").mkdir(parents=True)
+        (new2 / f"{u.NAME}.exe").write_text("new")
+        target = installed2 / f"{u.NAME}.exe"
+    started = u.start_install(new2, installed2, work2, log2, pid=overlay.pid, relaunch=False)
+    check("in the background, the installer is still running (waiting for the overlay to close)", started is None)
+    check("...and changes nothing while the overlay is open", target.read_text() == "old")
+    overlay.wait()
+    for _ in range(120):
+        if log2.exists() and "updated" in log2.read_text(errors="replace"):
+            break
+        time.sleep(0.25)
+    check(f"...then, once it has closed, puts the new version in ({log2.read_text(errors='replace').strip() if log2.exists() else 'no log'})",
+          target.read_text() == "new")
 else:
     print("     (not Windows or macOS: the real swap isn't tested here)")
 

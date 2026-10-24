@@ -215,16 +215,26 @@ def start_install(new_program, installed, workdir, log, pid=None, relaunch=True,
         import base64
         code = windows_script(pid, new_program, installed, workdir, log, relaunch)
         encoded = base64.b64encode(code.encode("utf-16-le")).decode("ascii")
-        args = ["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
-                "-WindowStyle", "Hidden", "-EncodedCommand", encoded]
-        kw = {"creationflags": 0x00000008 | 0x00000200}             # DETACHED_PROCESS, NEW_PROCESS_GROUP
+        args = ["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", encoded]
+        # No window, and its own process group, so it outlives the overlay. (Not DETACHED_PROCESS: with
+        # no console at all PowerShell quits without running anything.)
+        kw = {"creationflags": 0x08000000 | 0x00000200}             # CREATE_NO_WINDOW, CREATE_NEW_PROCESS_GROUP
     else:
         raise UpdateError("updating in place is only for the Windows and Mac downloads")
-    if wait:                                                        # (tests: attached, to see how it went)
-        return subprocess.run(args, capture_output=True, timeout=300)
-    subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                     start_new_session=(sys.platform == "darwin"), **kw)
-    return None
+    # Started the same way either way (tests wait for it, to see how it went).
+    out = subprocess.PIPE if wait else subprocess.DEVNULL
+    proc = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=out, stderr=out,
+                            start_new_session=(sys.platform == "darwin"), **kw)
+    if wait:
+        stdout, stderr = proc.communicate(timeout=300)
+        return subprocess.CompletedProcess(args, proc.returncode, stdout, stderr)
+    # It waits for the overlay to close, so it's still running now. If it isn't, it couldn't start:
+    # say so (the overlay stays open) rather than close for an update that won't come.
+    try:
+        proc.wait(timeout=1.5)
+        raise UpdateError(f"the installer stopped straight away (exit {proc.returncode})")
+    except subprocess.TimeoutExpired:
+        return None
 
 
 def prepare(version, assets, opener, progress=None, mac=None, workdir=None):

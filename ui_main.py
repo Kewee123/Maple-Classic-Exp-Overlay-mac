@@ -512,13 +512,15 @@ class MainView(tk.Frame):
         controls = tk.Frame(self, bg=bg)
         controls.grid(row=5, column=0, padx=g.px(SIDE - 8), pady=pad(0, 2), sticky="we")
         controls.columnconfigure(0, weight=1)
-        self.start_btn = Button(controls, theme, text="Start", icon="play", kind="primary", width=INNER - 8 - 52 - 52, height=46,
+        self.start_btn = Button(controls, theme, text="Start", icon="play", kind="primary", width=INNER - 8 - 52 - 52 - 52, height=46,
                                 radius=14, size=14, weight="bold", command=cb["start"], bg=bg)
         self.start_btn.grid(row=0, column=0, sticky="w")
+        self.stop_btn = Button(controls, theme, text="Stop", kind="secondary", width=52, height=46, radius=14, command=cb["stop"], tip="Stop and save session", bg=bg)
+        self.stop_btn.grid(row=0, column=1, padx=(g.px(-2), 0))
         self.reset_btn = Button(controls, theme, icon="reset", kind="secondary", width=46, height=46, radius=14, command=cb["reset"], tip="Reset", bg=bg)
-        self.reset_btn.grid(row=0, column=1, padx=(g.px(-2), 0))
+        self.reset_btn.grid(row=0, column=2, padx=(g.px(-2), 0))
         self.menu_btn = Button(controls, theme, icon="more", kind="secondary", width=46, height=46, radius=14, command=self._menu, tip="More", bg=bg)
-        self.menu_btn.grid(row=0, column=2, padx=(g.px(4), 0))
+        self.menu_btn.grid(row=0, column=3, padx=(g.px(4), 0))
 
         foot = tk.Frame(self, bg=bg)
         foot.grid(row=6, column=0, padx=g.px(SIDE), pady=pad(6, 0), sticky="we")
@@ -530,7 +532,7 @@ class MainView(tk.Frame):
         self.share_btn.grid(row=0, column=1, sticky="e")
         self.message = Message(self, theme, bg)
         self.message.grid(row=7, column=0, padx=g.px(SIDE + 2), pady=pad(2, 14), sticky="we")
-        self.foot_widgets = [self.tiles_row, self.more_btn, self.details, self.reset_btn, self.menu_btn, foot]
+        self.foot_widgets = [self.tiles_row, self.more_btn, self.details, self.stop_btn, self.reset_btn, self.menu_btn, foot]
 
     # ---- showing things
     def show(self, **m):
@@ -564,7 +566,7 @@ class MainView(tk.Frame):
                 w.grid_remove()
             elif w is not self.details or self.details_open:
                 w.grid()
-        self.start_btn.resize(INNER - 8 if on else INNER - 8 - 52 - 52)
+        self.start_btn.resize(INNER - 8 if on else INNER - 8 - 52 - 52 - 52)
         self.compact_btn.set(icon="grow" if on else "shrink")
         (self.log_btn.pack_forget() if on else self.log_btn.pack(side="left", padx=(2, 0), before=self.compact_btn))
 

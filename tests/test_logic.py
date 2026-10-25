@@ -525,6 +525,13 @@ entry = log.tick(300, "Rocky Road II", 27, mesos=(200, 300))
 check("a delayed first inventory read still records mesos/hr",
       entry is not None and entry["mesos"] == 200 and entry["mesos_seconds"] == 290)
 
+log, _ = new_log()
+log.gain(0, 100)
+log.gain(60, 100)
+entry = log.tick(60, "Rocky Road II", 27, force=True)
+check("stopping early flushes the current session to the log",
+      entry is not None and entry["exp"] == 200 and entry["seconds"] == 60)
+
 # ---- EXP outliers
 def exp_tracker(e=47850, p=50.0):
     tr = m.ExpTracker(); tr.start()

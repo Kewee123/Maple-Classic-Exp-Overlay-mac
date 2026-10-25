@@ -2442,7 +2442,8 @@ class AutoLog:
             if self.run:
                 self.run["exp"] += amount
 
-    def tick(self, now, map_name, level, party=1, mesos=None, job=None, map_read=None, gap=None):
+    def tick(self, now, map_name, level, party=1, mesos=None, job=None, map_read=None, gap=None,
+             force=False):
         """Call regularly while tracking. mesos is (mesos gained so far, when last read) from
         the MesoTracker, or None; job is the class; map_read the map name exactly as read;
         gap, seconds without EXP that end a stretch, if not the usual (PQ mode).
@@ -2464,7 +2465,7 @@ class AutoLog:
         if self.meso0 is None and mesos and self.start - 2 <= mesos[1] <= now:
             self.meso0 = mesos                               # mesos as the stretch began
         self._run_tick(now, map_name, level, party, mesos, job, map_read)
-        if now - self.start < LOG_BLOCK:
+        if now - self.start < LOG_BLOCK and not force:
             return None
         if self.block_exp <= 0:                              # nothing gained after all
             self.start, self.block_exp = now, 0
@@ -2893,7 +2894,8 @@ class App:
             self.view.destroy()
         self.theme = Theme(self.root, self._px_per_pt * 0.75, ASSETS / "fonts", self._own_fonts, PLATFORM.font)
         callbacks = dict(settings=self.open_settings, compact=lambda: self.set_compact(not self.compact),
-                         log=self.toggle_log, start=self.toggle, reset=self.reset, logging=self._logging_clicked,
+                         log=self.toggle_log, start=self.toggle, reset=self.reset, stop=self.stop,
+                         logging=self._logging_clicked,
                          menu=self._open_menu, share=self.share_card, details=self._details_changed)
         self.view = self.main = MainView(self.root, self.theme, callbacks, details=bool(self.cfg.get("details")))
         self.view.grid(row=0, column=0, sticky="n")
@@ -3932,14 +3934,15 @@ class App:
             return "Paused. Press Resume to carry on."
         return "Ready. Press Start when you begin farming."
 
-    def _log_tick(self, now):
-        if not self.tracker.running or self.skip_log:
+    def _log_tick(self, now, force=False):
+        if (not self.tracker.running and not force) or self.skip_log:
             return
         m = self.meso
         mesos = (m.gained, m.seen_at) if m.value is not None and now - m.seen_at <= 30 else None
         pq = self.pq_mode
         entry = self.autolog.tick(now, self._log_map(), self.level, self.party, mesos, self.job,
-                                  PQ_MAP if pq else self.map_read, PQ_GAP if pq else None)
+                                  PQ_MAP if pq else self.map_read, PQ_GAP if pq else None,
+                                  force=force)
         if entry:
             self.last_logged = now
             self._fill_log()
@@ -4042,6 +4045,15 @@ class App:
         self.autolog.reset_clock()
         if self.tracker.exp is not None:
             self.status.set(self._status_for(""))   # right away, not at the next read
+
+    def stop(self):
+        if not self.session.on and self.tracker.elapsed() <= 0:
+            return
+        self._log_tick(time.monotonic(), force=True)
+        self.session.reset()
+        self.autolog.reset_clock()
+        self._set_start("Start")
+        self.status.set("Stopped. The session was saved to the log.")
 
     def _set_start(self, text):
         """The Start button: gold when pressing it starts something, quiet while it's running."""

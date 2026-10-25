@@ -51,6 +51,25 @@ app = m.App(root, m.DigitTemplates.load())
 root.update()
 tree, box = app.log_tree, app.note_text
 
+# the "..." menu opens beside the 3-dots button, level with it, not under the overlay
+menu_btn = app.view.menu_btn
+app._open_menu(menu_btn)
+root.update_idletasks()
+found, stack = [], [root]
+while stack:
+    w = stack.pop()
+    stack.extend(w.winfo_children())
+    if isinstance(w, m.PopupMenu):
+        found.append(w)
+menu = found[-1] if found else None
+check("the ... menu opens beside the 3-dots button, not under it",
+      menu is not None and menu.winfo_rootx() >= menu_btn.winfo_rootx() + menu_btn.winfo_width()
+      and abs((menu.winfo_rooty() + menu.winfo_height())
+              - (menu_btn.winfo_rooty() + menu_btn.winfo_height())) <= 2)
+if menu:
+    menu.destroy()
+root.update()
+
 
 def pump(seconds=0.0):
     end = time.time() + seconds

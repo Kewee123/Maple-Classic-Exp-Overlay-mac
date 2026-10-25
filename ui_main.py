@@ -594,9 +594,28 @@ class PopupMenu(tk.Toplevel):
                        align="left", command=lambda c=command: (self.destroy(), c()), bg="#1c1f28")
             body.create_window(g.px(6), g.px(6 + i * row), anchor="nw", window=b)
         self.update_idletasks()
-        x = anchor.winfo_rootx() + anchor.winfo_width() - self.winfo_reqwidth()
-        y = anchor.winfo_rooty() - self.winfo_reqheight() - 6
-        self.geometry(f"+{max(0, x)}+{max(0, y)}")
+        # Beside the 3-dots button (and so beside the overlay), not under it: to its right if
+        # there's room, otherwise to its left. The menu opens upward, its bottom level with
+        # the button's, so it reads as attached to the button rather than floating.
+        gap = g.px(16)
+        mw = self.winfo_reqwidth() or g.px(w)
+        mh = self.winfo_reqheight() or g.px(h)
+        # (the whole desktop, so it also works on a second screen)
+        vx, vy = self.winfo_vrootx(), self.winfo_vrooty()
+        vw, vh = self.winfo_vrootwidth(), self.winfo_vrootheight()
+        if vw < self.winfo_screenwidth():
+            vx, vw = 0, self.winfo_screenwidth()
+        if vh < self.winfo_screenheight():
+            vy, vh = 0, self.winfo_screenheight()
+        left, top = vx + gap, vy + gap
+        right, bottom = vx + vw - gap, vy + vh - gap
+        x = anchor.winfo_rootx() + anchor.winfo_width() + gap
+        y = anchor.winfo_rooty() + anchor.winfo_height() - mh
+        if x + mw > right:
+            x = anchor.winfo_rootx() - mw - gap
+        x = max(left, min(x, right - mw))
+        y = max(top, min(y, bottom - mh))
+        self.geometry(f"+{int(x)}+{int(y)}")
         self.focus_force()
         self.bind("<Escape>", lambda e: self.destroy())
         self.bind("<FocusOut>", lambda e: self.after(120, self._maybe_close))

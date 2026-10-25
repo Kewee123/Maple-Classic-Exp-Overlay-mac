@@ -100,6 +100,10 @@ class Platform(ABC):
         """Why other programs' windows can't be seen right now, or None if they can."""
         return None
 
+    def application_windows(self):
+        """Visible application windows the user can choose as a capture source."""
+        return ()
+
     @abstractmethod
     def find_game_window(self):
         """Handle of the MapleStory game window (the biggest, if there are several), or None."""

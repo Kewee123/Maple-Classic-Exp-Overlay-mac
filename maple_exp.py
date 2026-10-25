@@ -1151,6 +1151,7 @@ class ScreenReader:
         self.templates = templates
         self.mode, self.region = mode, region
         self.hwnd = None
+        self.fixed_hwnd = None             # a user-selected application window on macOS
         self.size = None
         self.box = None             # where the EXP text is, relative to the game window
         self.misses = 0
@@ -1184,8 +1185,8 @@ class ScreenReader:
         self.last_rect = None       # where the game window was at the last look (x, y, w, h)
         self.next_job_read = 0.0
 
-    def use_window(self):
-        self.mode, self.hwnd, self.box = "window", None, None
+    def use_window(self, handle=None):
+        self.mode, self.hwnd, self.fixed_hwnd, self.box = "window", handle, handle, None
 
     def use_region(self, region):
         self.mode, self.region = "region", region
@@ -1280,7 +1281,8 @@ class ScreenReader:
 
     def _game_rect(self):
         if not (self.hwnd and PLATFORM.window_exists(self.hwnd)):
-            self.hwnd, self.box, self.map_box = PLATFORM.find_game_window(), None, None
+            self.hwnd = self.fixed_hwnd or PLATFORM.find_game_window()
+            self.box, self.map_box = None, None
         rect = PLATFORM.client_rect(self.hwnd) if self.hwnd else None
         if rect and rect[2:] != self.size:                  # resized: find everything again
             self.size, self.box, self.map_box, self.gh = rect[2:], None, None, None
@@ -2816,10 +2818,33 @@ class App:
         save_config(self.cfg)
 
     def _open_menu(self, anchor):
-        PopupMenu(self.theme, anchor, [
+        items = [
             ("Follow the game" if self.reader.mode == "region" else "Select area", None, self.toggle_area),
             ("View capture", None, self.view_capture),
-            ("PQ mode: on" if self.pq_mode else "PQ mode: off", None, self.toggle_pq)])
+            ("PQ mode: on" if self.pq_mode else "PQ mode: off", None, self.toggle_pq)]
+        if sys.platform == "darwin":
+            items.insert(0, ("Choose application", None, self.choose_application))
+        PopupMenu(self.theme, anchor, items)
+
+    def choose_application(self):
+        windows = PLATFORM.application_windows()
+        if not windows:
+            self.status.set("No visible application windows found. Check Screen Recording permission.")
+            return
+
+        def label(w):
+            title = w.title.strip() or "Untitled window"
+            return f"{w.owner}: {title}"[:52]
+
+        PopupMenu(self.theme, self.view.menu_btn, [
+            (label(w), None, lambda w=w: self._choose_window(w)) for w in windows[:8]
+        ])
+
+    def _choose_window(self, window):
+        self.reader.use_window(window.number)
+        self.cfg["mode"] = "window"
+        self._new_source()
+        self.status.set(f"Capturing {window.owner}: {window.title or 'Untitled window'}")
 
     def toggle_pq(self):
         """PQ mode: for party quests, which go through several maps. The numbers carry on from

@@ -112,6 +112,14 @@ class MacHotkeys(Hotkeys):
 class MacPlatform(Platform):
     name = "macOS"
 
+    def application_windows(self):
+        """Visible windows suitable for capture, excluding this overlay and system chrome."""
+        return tuple(w for w in window_list()
+                     if w.pid != os.getpid() and w.owner != "Maple Classic Exp Overlay"
+                     and w.rect and w.onscreen
+                     and 0 <= w.layer <= _TOPMOST and w.owner.lower() not in _NOT_GAME
+                     and w.rect[2] >= 100 and w.rect[3] >= 100)
+
     def version(self):
         return f"macOS {platform.mac_ver()[0]}"
 

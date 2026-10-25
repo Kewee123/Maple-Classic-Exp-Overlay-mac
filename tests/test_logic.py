@@ -210,6 +210,8 @@ if sys.platform == "darwin":
           and not macos.is_game(W(4, 99, "Python", "MapleStory", 0, (0, 0, 800, 600), True), 99)
           and not macos.is_game(W(5, 13, "wine64-preloader", "MapleStory", 25, (0, 0, 800, 600), True), 99))
     check("macOS windows can be listed", isinstance(macos.window_list(), list))
+    check("macOS application choices exclude the overlay", all(
+        w.owner != "Maple Classic Exp Overlay" for w in m.PLATFORM.application_windows()))
 check("release notes are shown as plain text, keeping names like exp_log.txt",
       m._plain_text("**New**\n- **Time** in `exp_log.txt`, see [README](https://x)") == "New\n• Time in exp_log.txt, see README")
 check("how long each line was measured over", [m.fmt_logged(s) for s in (300.4, 1500, 3900)] == ["5 min", "25 min", "1 h 05 min"]

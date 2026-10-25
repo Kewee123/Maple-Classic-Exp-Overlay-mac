@@ -8,6 +8,9 @@
 - **Settings > Save logs** puts all of them, with the bug report's details, in one zip to send (without your computer's user name, and nothing from your EXP log or notes).
 - Cmd+Q on a Mac now closes the overlay properly (it saves your window position, and isn't taken for a crash).
 
+**Fixed**
+- The **...** menu now opens beside the 3-dots button, not under the overlay.
+
 ## 0.9.12-beta
 
 **New**

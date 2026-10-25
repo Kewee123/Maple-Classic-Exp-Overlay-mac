@@ -1,22 +1,33 @@
 # Builds and releases the Apple Silicon Mac download on GitHub.
 #
-# A pushed version tag, or Run workflow with "release" enabled from main, builds
-# the Mac app, attests the zip, and creates or updates a draft GitHub release.
-# Without "release", the zip is kept as an Actions artifact only.
+# A new VERSION pushed to main builds the Mac app, tags it v<VERSION>, and publishes
+# its GitHub release, with the notes from that version's CHANGELOG.md section. Pushing
+# a version tag does the same. Run workflow with "release" ticked publishes the current
+# version from main without bumping it. Without a new version, the zip is kept as an
+# Actions artifact only.
 name: Build
 
 on:
   workflow_dispatch:
     inputs:
       release:
-        description: "Make the release: tag this version (v + VERSION in maple_exp.py) and draft its release. From main only."
+        description: "Publish this version now: tag v + VERSION in maple_exp.py and release it. From main only."
         type: boolean
         default: false
   push:
+    branches: [main]
     tags: ["v*"]
+    paths:
+      - "maple_exp.py"
+      - "CHANGELOG.md"
 
 permissions:
   contents: read
+
+# One build at a time, so two runs can't race to make the same tag or release.
+concurrency:
+  group: build-release
+  cancel-in-progress: false
 
 jobs:
   mac:
@@ -32,26 +43,55 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
           persist-credentials: false
+          fetch-depth: 0                 # to compare VERSION with the commit before this push
 
       - name: Identify the release
         id: tag
         shell: bash
         env:
           RELEASE: ${{ inputs.release }}
+          BEFORE: ${{ github.event.before }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           version=$(sed -n 's/^VERSION = "\(.*\)"/\1/p' maple_exp.py)
+          tag="v$version"
+          release=false
+
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            if [ "$tag" != "$GITHUB_REF_NAME" ]; then
               echo "::error::The tag is $GITHUB_REF_NAME but maple_exp.py says VERSION = $version."
               exit 1
             fi
-            echo "tag=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+            release=true
+            tag="$GITHUB_REF_NAME"
           elif [ "$RELEASE" = "true" ]; then
             if [ "$GITHUB_REF" != "refs/heads/main" ]; then
               echo "::error::Releases are only made from main."
               exit 1
             fi
-            echo "tag=v$version" >> "$GITHUB_OUTPUT"
+            release=true
+          elif [ "$GITHUB_REF" == "refs/heads/main" ]; then
+            # A push to main: publish only a version that isn't tagged yet, and only when
+            # this push changed VERSION. An ordinary code push just builds.
+            if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" >/dev/null 2>&1; then
+              echo "$tag is already tagged: building without releasing."
+            else
+              old=""
+              if [ -n "$BEFORE" ] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+                old=$(git show "$BEFORE:maple_exp.py" | sed -n 's/^VERSION = "\(.*\)"/\1/p')
+              fi
+              if [ "$old" != "$version" ]; then
+                release=true
+              else
+                echo "VERSION is still $version (unchanged in this push): building without releasing."
+              fi
+            fi
+          fi
+
+          if [ "$release" = "true" ]; then
+            echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=" >> "$GITHUB_OUTPUT"
           fi
 
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
@@ -161,7 +201,7 @@ jobs:
           path: release/SHA256SUMS.txt
           archive: false
 
-      - name: Draft the Mac release
+      - name: Publish the Mac release
         if: steps.tag.outputs.tag != ''
         shell: bash
         env:
@@ -177,25 +217,34 @@ jobs:
           else
             gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$TAG" -f sha="$GITHUB_SHA" > /dev/null
           fi
+          version=${TAG#v}
           name=$(basename "$ZIP")
           hash=$(shasum -a 256 "$ZIP" | cut -d' ' -f1)
           title="Maple Classic Exp Overlay $(echo "$TAG" | sed -E 's/-beta$/ (beta)/')"
           run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
-          cat > notes.md <<EOF
-          (Notes to come.)
-
-          ---
-          **Check this download**
-          - SHA-256 of $name: \`$hash\` (also in SHA256SUMS.txt).
-          - Built by GitHub from this tag. Check it with: \`gh attestation verify $name --repo $GITHUB_REPOSITORY\`
-          - The same file is on [the build's page]($run_url).
-          EOF
+          notes=$(awk -v v="$version" '
+            $0 == "## " v {on=1; next}
+            on && /^## / {exit}
+            on {print}
+          ' CHANGELOG.md | sed '/./,$!d')
+          if [ -z "$notes" ]; then
+            notes="See [CHANGELOG.md](https://github.com/$GITHUB_REPOSITORY/blob/main/CHANGELOG.md) for what changed."
+          fi
+          {
+            printf '%s\n\n' "$notes"
+            echo '---'
+            echo '**Check this download**'
+            echo "- SHA-256 of $name: \`$hash\` (also in SHA256SUMS.txt)."
+            echo "- Built by GitHub from this tag. Check it with: \`gh attestation verify $name --repo $GITHUB_REPOSITORY\`"
+            echo "- The same file is on [the build's page]($run_url)."
+          } > notes.md
           state=$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null || echo none)
           if [ "$state" = "none" ]; then
-            gh release create "$TAG" "$ZIP" release/SHA256SUMS.txt --draft --verify-tag --title "$title" --notes-file notes.md
+            gh release create "$TAG" "$ZIP" release/SHA256SUMS.txt --verify-tag --latest \
+              --title "$title" --notes-file notes.md
           elif [ "$state" = "true" ]; then
             gh release upload "$TAG" "$ZIP" release/SHA256SUMS.txt --clobber
-            gh release edit "$TAG" --notes-file notes.md
+            gh release edit "$TAG" --draft=false --latest --title "$title" --notes-file notes.md
           else
             echo "::warning::$TAG is already published; the build is on this run's page."
             exit 0

@@ -2362,7 +2362,7 @@ class AutoLog:
             self.reset_clock()                               # party size changed: start over
             return None
         self.block_party = party
-        if self.meso0 is None and mesos and mesos[1] >= self.start - 2:
+        if self.meso0 is None and mesos and self.start - 2 <= mesos[1] <= now:
             self.meso0 = mesos                               # mesos as the stretch began
         self._run_tick(now, map_name, level, party, mesos, job, map_read)
         if now - self.start < LOG_BLOCK:
@@ -2395,7 +2395,7 @@ class AutoLog:
             return
         r["job"] = r["job"] or job
         r["level"] = level
-        if r["meso0"] is None and mesos and mesos[1] >= r["start"] - 2:
+        if r["meso0"] is None and mesos and r["start"] - 2 <= mesos[1] <= now:
             r["meso0"] = mesos
         if now - r["start"] < RUN_SECONDS:
             return

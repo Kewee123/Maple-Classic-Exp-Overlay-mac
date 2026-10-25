@@ -501,6 +501,17 @@ for v in (10030,) * 2:
     t.observe(v, 90, 30, True)
 check("mesos picked up after resuming still count", t.value == 10030 and t.gained == 10)
 
+log, _ = new_log()
+log.gain(0, 100)
+log.tick(0, "Rocky Road II", 27, mesos=None)
+log.tick(10, "Rocky Road II", 27, mesos=(0, 10))
+log.gain(100, 100)
+log.tick(100, "Rocky Road II", 27, mesos=(100, 100))
+log.gain(300, 100)
+entry = log.tick(300, "Rocky Road II", 27, mesos=(200, 300))
+check("a delayed first inventory read still records mesos/hr",
+      entry is not None and entry["mesos"] == 200 and entry["mesos_seconds"] == 290)
+
 # ---- EXP outliers
 def exp_tracker(e=47850, p=50.0):
     tr = m.ExpTracker(); tr.start()

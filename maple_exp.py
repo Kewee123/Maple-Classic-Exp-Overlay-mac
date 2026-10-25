@@ -2425,12 +2425,14 @@ class AutoLog:
     def reset_clock(self):
         self.start = self.last_gain = self.block_map = self.block_party = self.meso0 = None
         self.block_exp = 0
+        self.block_first = 0                             # the gain that started this stretch
         self.run = None                                  # the 15-minute run going on, if any
 
     def gain(self, now, amount):
         if amount > 0:
             if self.start is None:
                 self.start, self.block_exp = now, 0          # this gain starts the clock
+                self.block_first = amount                    # (counted if stopped early)
                 self.run = self.run or {"start": now, "exp": 0, "map": None}
             else:
                 self.block_exp += amount
@@ -2467,15 +2469,17 @@ class AutoLog:
         self._run_tick(now, map_name, level, party, mesos, job, map_read)
         if now - self.start < LOG_BLOCK and not force:
             return None
-        if self.block_exp <= 0:                              # nothing gained after all
-            self.start, self.block_exp = now, 0
+        # Stopped early: the gain that started the stretch is part of the session too.
+        exp = self.block_exp + (self.block_first if force else 0)
+        if exp <= 0:                                         # nothing gained after all
+            self.start, self.block_exp, self.block_first = now, 0, 0
             return None
         meso_gain = meso_seconds = 0
         if self.meso0 and mesos and mesos[1] > self.meso0[1]:
             meso_gain, meso_seconds = mesos[0] - self.meso0[0], mesos[1] - self.meso0[1]
-        entry = self._add(self.block_map or "Unknown map", level, party, self.block_exp,
+        entry = self._add(self.block_map or "Unknown map", level, party, exp,
                           now - self.start, meso_gain, meso_seconds, job, map_read or self.block_map)
-        self.start, self.block_exp = now, 0                  # the next 5 minutes start now
+        self.start, self.block_exp, self.block_first = now, 0, 0   # the next 5 minutes start now
         self.meso0 = mesos if mesos and now - mesos[1] < 10 else None
         return entry
 

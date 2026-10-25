@@ -260,7 +260,7 @@ run.bat
 
 **How to run it on a Mac:** `brew install tesseract`, then `python3 -m pip install -r requirements.txt` and `python3 maple_exp.py`. The first time, allow your Terminal (or Python) in **System Settings > Privacy & Security > Screen Recording**, then start it again. The window is found by "MapleStory" in its title; if it isn't, use **Select area**. Hotkeys aren't available on macOS yet.
 
-If automatic window detection chooses the wrong source, open the **...** menu and choose **Choose application**, then select the MapleStory/CrossOver window. The selected window is scanned for both the EXP bar and the inventory mesos, so one source can provide both rates.
+If automatic window detection chooses the wrong source, open the **...** menu and choose **Choose application**, then select the MapleStory/CrossOver window. The selected window is scanned for both the EXP bar and mesos pickup notifications, so mesos/hr works without opening the inventory. The inventory total remains a fallback when the game is not showing pickup text.
 
 Everything that differs between Windows and macOS (finding the game window, screen scaling, hotkeys, the one-copy-at-a-time lock) is in `platforms/`: one `Platform` interface in `base.py`, one implementation per OS, and `create_platform()` picks the one for the OS it's on.
 

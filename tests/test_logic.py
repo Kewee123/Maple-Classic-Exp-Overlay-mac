@@ -419,6 +419,11 @@ m.CONFIG_PATH.write_text("[1, 2", encoding="utf-8")
 check("an unreadable settings file gives the defaults", m.load_config()["topmost"] is True)
 
 # ---- mesos
+check("pickup notification parses its mesos amount",
+      m.parse_pickup_mesos("You have gained mesos (+24)") == 24
+      and m.parse_pickup_mesos("You received EXP (+19)") is None
+      and m.parse_pickup_notification("You received EXP (+19)") == (19, None))
+
 t = m.MesoTracker()
 for v in (9820, 9820):
     t.observe(v, 0, 0, True)
@@ -502,6 +507,12 @@ t.observe(10020, 60, 0, True)
 for v in (10030,) * 2:
     t.observe(v, 90, 30, True)
 check("mesos picked up after resuming still count", t.value == 10030 and t.gained == 10)
+
+t = m.MesoTracker()
+t.observe_pickup(24, 0, 0, True)
+t.observe_pickup(18, 60, 60, True)
+check("pickup notifications count without an inventory baseline",
+      t.value == 42 and t.gained == 42 and t.per_hour(60) == 2520)
 
 log, _ = new_log()
 log.gain(0, 100)

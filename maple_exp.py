@@ -97,6 +97,7 @@ MESOS_PATH = DATA_DIR / "mesos_digits.npz"             # learned as you play...
 MESOS_START_PATH = ASSETS / "mesos_digits.npz"          # ...starting from these
 MESOS_BOX_PATH = ASSETS / "mesos_box.npz"
 SCAN_SECONDS = 4            # how often the whole window is checked for the inventory and party
+PICKUP_SCAN_SECONDS = 1     # pickup notifications are brief, so check them more often
 OUTLINE_SECONDS = 8         # how often the (costly) search for a see-through mesos box may run
 DEFAULTS = {"gap_seconds": 15, "transparency": 0, "topmost": True,
             "check_updates": True, "skip_version": "", "ui_scale": 100, "compact": False, "hotkeys_on": True,
@@ -552,6 +553,22 @@ def tesseract_candidates(bgr, lay):
     pcts = {int(s) / 100 for s in _ocr_cells(bgr, lay, _pct_cells(lay))
             if 3 <= len(s) <= 5}
     return [(e, p) for e in sorted(exps) for p in sorted(pcts)]
+
+
+def parse_pickup_notification(text):
+    """Return (EXP, mesos) from the game's exact pickup notification wording."""
+    text = text.lower()
+    find = lambda phrase: re.search(
+        rf"{phrase}\s*\(\s*\+\s*([0-9][0-9,]*)\s*\)", text)
+    exp = find(r"received\s+exp")
+    mesos = find(r"gained\s+mesos")
+    return (int(exp.group(1).replace(",", "")) if exp else None,
+            int(mesos.group(1).replace(",", "")) if mesos else None)
+
+
+def parse_pickup_mesos(text):
+    """Return a mesos pickup amount only for the game's exact notification wording."""
+    return parse_pickup_notification(text)[1]
 
 
 def build_templates(samples, scales=(1.0, 0.75, 0.55, 0.4, 0.3), path=TEMPLATE_PATH):
@@ -1121,8 +1138,8 @@ def find_party_bars(bgr, gh, hsv=None):
 # --------------------------------------------------------------------------- finding it on screen
 
 Reading = namedtuple("Reading", "where candidates confident text image boxes map note "
-                                 "mesos mesos_image mesos_boxes party mesos_at",
-                     defaults=((), False, "", None, (), None, None, None, None, (), None, None))
+                                 "mesos mesos_image mesos_boxes party mesos_at mesos_pickup exp_pickup",
+                      defaults=((), False, "", None, (), None, None, None, None, (), None, None, None, None))
 
 
 def _view(img, lay):
@@ -1171,6 +1188,11 @@ class ScreenReader:
         self.mesos_pending = (None, 0)
         self.mesos_fails = 0
         self.next_mesos_check = 0.0
+        self.next_pickup_scan = 0.0
+        self.last_pickup_amount = None
+        self.last_pickup_at = 0.0
+        self.last_pickup_exp = None
+        self.last_pickup_exp_at = 0.0
         self.mesos_covered = False  # this app's window is in the way of the mesos
         self.two_boxes = False      # a storage / trade window shows a second mesos box
         self.next_outline = 0.0     # the earliest time to search for a see-through mesos box again
@@ -1442,6 +1464,7 @@ class ScreenReader:
                         self.party_area = (sx + x0 - int(g), sy + y0 - int(g),
                                            x1 - x0 + int(2 * g), y1 - y0 + int(2 * g))
         mesos, image, boxes = None, None, ()
+        exp_pickup, mesos_pickup = self._read_pickup(sct, wx, wy, ww, wh) or (None, None)
         self.mesos_covered = False
         if self.mesos_box:
             bx, by, bw, bh = self.mesos_box
@@ -1452,7 +1475,50 @@ class ScreenReader:
             else:
                 mesos, image, boxes = self._read_mesos(sct, wx + bx, wy + by, bw, bh)
         return reading._replace(mesos=mesos, mesos_image=image, mesos_boxes=boxes, party=party,
-                                mesos_at=moved, note=" ".join(notes) or None)
+                    mesos_at=moved, mesos_pickup=mesos_pickup, exp_pickup=exp_pickup,
+                    note=" ".join(notes) or None)
+
+    def _read_pickup(self, sct, wx, wy, ww, wh):
+        """Read a transient mesos pickup notification without opening inventory."""
+        now = time.monotonic()
+        if not tesseract_ok or now < self.next_pickup_scan:
+            return None
+        self.next_pickup_scan = now + PICKUP_SCAN_SECONDS
+        shot = self._hide_own(grab(sct, wx + int(ww * 0.08), wy + int(wh * 0.22),
+                                   int(ww * 0.84), int(wh * 0.58)))
+        if not shot:
+            return None
+        img = cv2.cvtColor(shot[0], cv2.COLOR_BGR2GRAY)
+        height = img.shape[0]
+        images = []
+        for fraction in (0.05, 0.15, 0.25, 0.35, 0.45, 0.55, 0.65, 0.75):
+            y0 = max(0, int(height * fraction))
+            y1 = min(height, y0 + max(24, int(height * 0.16)))
+            line = img[y0:y1]
+            if line.size:
+                line = cv2.resize(line, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
+                _, line = cv2.threshold(line, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+                images.append(cv2.copyMakeBorder(line, 12, 12, 18, 18,
+                                                 cv2.BORDER_CONSTANT, value=0))
+        try:
+            texts = TESS.read_lines(images, "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ()+ ,")
+        except Exception as e:
+            log_error("reading mesos pickup notification", e)
+            return None
+        parsed = [parse_pickup_notification(text) for text in texts]
+        exp_amount = next((exp for exp, _ in parsed if exp is not None), None)
+        amount = next((mesos for _, mesos in parsed if mesos is not None), None)
+        if exp_amount == self.last_pickup_exp and now - self.last_pickup_exp_at < 3:
+            exp_amount = None
+        elif exp_amount is not None:
+            self.last_pickup_exp, self.last_pickup_exp_at = exp_amount, now
+        if amount == self.last_pickup_amount and now - self.last_pickup_at < 3:
+            amount = None
+        elif amount is not None:
+            self.last_pickup_amount, self.last_pickup_at = amount, now
+        if exp_amount is None and amount is None:
+            return None
+        return exp_amount, amount
 
     def _readable(self, img, field):
         """Clear mesos digits at field? (Always yes while the mesos font is still being
@@ -1602,6 +1668,7 @@ class ExpTracker:
         self.last_read = None                 # latest reading, trusted or not (for display)
         self.req = None                       # EXP required for the current level
         self._req_exact = False               # req came straight from the EXP table
+        self.pickup_credit = 0                 # notification EXP already counted, awaiting bar confirmation
         self._table_level = None              # level the last clean reading pointed at
         self._seen = {}                       # distinct (exp, pct) readings this level -> weight
         self._pending = None                  # big change waiting for confirmation (e, p, reads)
@@ -1720,6 +1787,14 @@ class ExpTracker:
             while len(self.pct_samples) > 1 and self.pct_samples[1][0] <= now - longest:
                 self.pct_samples.popleft()
 
+    def observe_pickup(self, amount):
+        """Add notification EXP and credit it against the later EXP-bar delta."""
+        if amount <= 0 or not self.running or self.req is None:
+            return False
+        self._add_gain(amount)
+        self.pickup_credit += amount
+        return True
+
     # ---- main entry
     def observe(self, candidates, confident=False):
         """Feed the (exp, pct) guesses for one screenshot. Returns (accepted, note)."""
@@ -1811,6 +1886,10 @@ class ExpTracker:
                 self._recent.append((self._reads, e))
                 return True, "baseline"
         self._pending = None
+        if delta > 0 and self.pickup_credit:
+            covered = min(delta, self.pickup_credit)
+            delta -= covered
+            self.pickup_credit -= covered
         self._add_gain(delta)
         self.exp, self.pct = e, p
         self._recent.append((self._reads, e))
@@ -1917,11 +1996,29 @@ class MesoTracker:
         self.samples = deque()                # (elapsed, gained)
         self.start = None                     # elapsed time when counting began
         self.counting = False
+        self.pickup_mode = False
 
     def pause(self):
         self.counting = False                 # don't count what changes while paused
 
+    def observe_pickup(self, amount, now, elapsed, running):
+        """Count one confirmed pickup notification without needing an inventory total."""
+        if not running or amount <= 0:
+            return
+        self.pickup_mode = True
+        self.seen_at = now
+        self.value = (self.value or 0) + amount
+        self.gained += amount
+        if not self.counting:
+            self.counting = True
+            self.start = elapsed
+        self.samples.append((elapsed, self.gained))
+        while len(self.samples) > 2 and self.samples[1][0] <= elapsed - ROLLING_WINDOW:
+            self.samples.popleft()
+
     def observe(self, value, now, elapsed, running):
+        if self.pickup_mode:
+            return
         jump = False
         if value == self.value:
             self._candidate = (None, 0, 0)        # unchanged: nothing new to confirm
@@ -3757,8 +3854,12 @@ class App:
             self.cfg["mesos_box"] = list(r.mesos_at)
             self.reader.saved_mesos = tuple(r.mesos_at)
             save_config(self.cfg)
-        if r.mesos is not None:
+        if r.mesos_pickup is not None:
+            self.meso.observe_pickup(r.mesos_pickup, now, t.elapsed(), t.running)
+        if r.mesos is not None and not self.meso.pickup_mode:
             self.meso.observe(r.mesos, now, t.elapsed(), t.running)
+        if r.exp_pickup is not None:
+            t.exp.observe_pickup(r.exp_pickup)
         if r.party is not None:                         # believe a new party size once seen twice
             seen, n = self._party_seen
             n = n + 1 if r.party == seen else 1
@@ -3885,7 +3986,7 @@ class App:
             self._trend_at = now
         m, el = self.meso, t.elapsed()
         if m.value is None:
-            mesos = "move this window" if self.reader.mesos_covered else "open inventory"
+            mesos = "move this window" if self.reader.mesos_covered else "waiting for mesos"
         else:
             mesos = fmt_num(m.value) + (f"  (+{fmt_short(m.gained)})" if m.gained > 0 else "")
         state, state_text = self._state()

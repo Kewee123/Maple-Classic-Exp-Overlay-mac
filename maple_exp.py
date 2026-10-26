@@ -1193,6 +1193,7 @@ class ScreenReader:
         self.last_pickup_at = 0.0
         self.last_pickup_exp = None
         self.last_pickup_exp_at = 0.0
+        self.pickup_look = None      # the last EXP/mesos pickup notification seen, for View capture
         self.mesos_covered = False  # this app's window is in the way of the mesos
         self.two_boxes = False      # a storage / trade window shows a second mesos box
         self.next_outline = 0.0     # the earliest time to search for a see-through mesos box again
@@ -1236,6 +1237,7 @@ class ScreenReader:
         self.mesos_covered, self.party_area, self.next_scan = False, None, 0.0
         self.two_boxes, self.next_outline = False, 0.0
         self.exp_anchor, self.next_job_read = None, 0.0
+        self.pickup_look = None
         self.request_map()
 
     def read(self, sct):
@@ -1494,26 +1496,31 @@ class ScreenReader:
                                    int(ww * 0.84), int(wh * 0.58)))
         if not shot:
             return None
-        img = cv2.cvtColor(shot[0], cv2.COLOR_BGR2GRAY)
+        bgr = shot[0]
+        img = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
         height = img.shape[0]
-        images = []
+        images, sources = [], []
         for fraction in (0.05, 0.15, 0.25, 0.35, 0.45, 0.55, 0.65, 0.75):
             y0 = max(0, int(height * fraction))
             y1 = min(height, y0 + max(24, int(height * 0.16)))
             line = img[y0:y1]
             if line.size:
-                line = cv2.resize(line, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
-                _, line = cv2.threshold(line, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-                images.append(cv2.copyMakeBorder(line, 12, 12, 18, 18,
+                enhanced = cv2.resize(line, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
+                _, enhanced = cv2.threshold(enhanced, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+                images.append(cv2.copyMakeBorder(enhanced, 12, 12, 18, 18,
                                                  cv2.BORDER_CONSTANT, value=0))
+                sources.append(bgr[y0:y1])                  # (the translucent line, for View capture)
         try:
             texts = TESS.read_lines(images, "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ()+ ,")
         except Exception as e:
             log_error("reading mesos pickup notification", e)
             return None
         parsed = [parse_pickup_notification(text) for text in texts]
-        exp_amount = next((exp for exp, _ in parsed if exp is not None), None)
-        amount = next((mesos for _, mesos in parsed if mesos is not None), None)
+        parsed_exp = next((exp for exp, _ in parsed if exp is not None), None)
+        parsed_mesos = next((mesos for _, mesos in parsed if mesos is not None), None)
+        if parsed_exp is None and parsed_mesos is None:
+            return None
+        exp_amount, amount = parsed_exp, parsed_mesos
         if exp_amount == self.last_pickup_exp and now - self.last_pickup_exp_at < 3:
             exp_amount = None
         elif exp_amount is not None:
@@ -1524,7 +1531,30 @@ class ScreenReader:
             self.last_pickup_amount, self.last_pickup_at = amount, now
         if exp_amount is None and amount is None:
             return None
+        self._remember_pickup(parsed, texts, sources, parsed_exp, parsed_mesos, now)
         return exp_amount, amount
+
+    def _remember_pickup(self, parsed, texts, sources, exp, mesos, now):
+        """Keeps the picture of the last EXP/mesos pickup notification for View capture: the
+        strips of the screen it was read from, not the black-and-white copy Tesseract saw."""
+        exp_i = next((i for i, (e, _) in enumerate(parsed) if e is not None), None)
+        mesos_i = next((i for i, (_, m) in enumerate(parsed) if m is not None), None)
+        picked = sorted({i for i in (exp_i, mesos_i) if i is not None and i < len(sources)})
+        if not picked:
+            return
+        parts = [sources[i] for i in picked]
+        width = max(part.shape[1] for part in parts)
+        height = sum(part.shape[0] for part in parts) + 4 * (len(parts) - 1)
+        preview = np.zeros((height, width, 3), dtype=np.uint8)
+        y = 0
+        for part in parts:
+            preview[y:y + part.shape[0], :part.shape[1]] = part
+            y += part.shape[0] + 4
+        if preview.shape[1] > 700:
+            scale = 700 / preview.shape[1]
+            preview = cv2.resize(preview, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+        self.pickup_look = {"image": preview, "texts": [texts[i] for i in picked if i < len(texts)],
+                            "exp": exp, "mesos": mesos, "at": now}
 
     def _readable(self, img, field):
         """Clear mesos digits at field? (Always yes while the mesos font is still being
@@ -4176,6 +4206,7 @@ class App:
         self.tracker.exp = self.tracker.pct = None
         self.tracker._pending = self.tracker._pending_lvl = None
         self._map_seen, self._map_rechecks = (None, 0), 0
+        self.reader.pickup_look = None
         self.autolog.reset_clock()
         save_config(self.cfg)
 
@@ -4233,6 +4264,46 @@ class App:
             how = "Class. Not read yet (it's tried every few seconds once the EXP bar is found)"
         return (look or {}).get("image"), (look or {}).get("boxes", []), how
 
+    def _capture_calc_text(self):
+        """The numbers behind the reading, for View capture."""
+        t, m = self.tracker, self.meso
+        el = t.elapsed()
+        shown = (t.exp, t.pct) if t.exp is not None else t.last_read
+        rate, rolling = t.rate(), t.rolling_rate()
+        mesos_hr, mesos_5 = m.per_hour(el), m.per_5min(el)
+        now = time.monotonic()
+        left = self.autolog.seconds_left(now)
+        run = self.autolog.run_progress(now)
+        look = self.reader.pickup_look or {}
+        last = [f"+{fmt_num(look[k])} {unit}" for k, unit in (("exp", "EXP"), ("mesos", "mesos"))
+                if look.get(k) is not None]
+        if shown:
+            exp_line = (f"EXP bar: {fmt_num(shown[0])} [{shown[1]:.2f}%]"
+                        + (f" of {fmt_num(t.req)} needed" if t.req else " (level not known yet)"))
+        else:
+            exp_line = "EXP bar: not read yet"
+        lines = [
+            f"{self.map_name or 'Map not read yet'}   Lv {self.level or '?'}   "
+            f"{self.job or 'class not read'}   {party_label(self.party)}",
+            exp_line,
+            f"Session: +{fmt_num(t.gained)} EXP" + (f" (+{t.levels} lvl)" if t.levels else "")
+            + f" in {fmt_dur(el)}  ->  {fmt_num(rate)} EXP/hr"
+            + (f" ({rate / t.req * 100:.2f}% / hr)" if rate and t.req else "")
+            + (f"   (last 5 min: {fmt_num(rolling)})" if rolling is not None else ""),
+            "Gained (5 / 15 / 30 / 60 min): " + " / ".join(
+                fmt_pct_gained(t.pct_in_last(sec), sec) for sec, _name in PCT_WINDOWS),
+            f"Mesos ({'pickup notifications' if m.pickup_mode else 'inventory total'}): "
+            f"{fmt_num(m.value)}" + (f" (+{fmt_num(m.gained)})" if m.gained else "")
+            + f"  ->  {fmt_num(mesos_hr)} mesos/hr"
+            + (f"   (last 5 min: {fmt_num(mesos_5)})" if mesos_5 is not None else ""),
+            f"Pickup credit: {fmt_num(t.pickup_credit)} EXP"
+            + (f"   ·   last pickup: {', '.join(last)}" if last else ""),
+            (f"Log: next line in {int(left) // 60}:{int(left) % 60:02d}" if left is not None
+             else "Log: waiting for the next EXP gain")
+            + (f"   ·   15-min run: {int(run // 60)} of {RUN_SECONDS // 60} min" if run is not None else ""),
+        ]
+        return "\n".join(lines)
+
     def view_capture(self):
         r, mr = self.last_capture, self.last_mesos
         if not r and not mr:
@@ -4257,10 +4328,18 @@ class App:
                 tk.Frame(win, bg=BG, height=th.px(12)).pack()
             tk.Label(win, text=text, bg=BG, fg=FG, font=th.font("semibold", 12), wraplength=th.px(560),
                      justify="left").pack(anchor="w", padx=th.px(16))
+        calc = self._capture_calc_text()
+        if calc:
+            box = tk.Frame(win, bg=BG)
+            box.pack(fill="x", padx=th.px(16), pady=(th.px(14), 0))
+            tk.Label(box, text="How it adds up", bg=BG, fg=FG,
+                     font=th.font("semibold", 12)).pack(anchor="w")
+            tk.Label(box, text=calc, bg=BG, fg=DIM, font=th.font("regular", 11), justify="left",
+                     anchor="w", wraplength=th.px(560)).pack(anchor="w", pady=(th.px(2), 0))
         bottom = tk.Frame(win, bg=BG)
         bottom.pack(fill="x", padx=th.px(16), pady=(th.px(12), th.px(16)))
-        tk.Label(bottom, text="Boxes show where each digit was found.", bg=BG, fg=DIM,
-                 font=th.font("regular", 11)).pack(side="left")
+        tk.Label(bottom, text="Boxes show where each digit was found; pickups are shown as they appeared.",
+                 bg=BG, fg=DIM, font=th.font("regular", 11)).pack(side="left")
         Button(bottom, th, text="Something's wrong? Report a bug", kind="secondary", width=240, height=36, radius=10,
                size=12, command=lambda: self.report_bug(win), bg=BG).pack(side="right")
 
@@ -4490,6 +4569,16 @@ class App:
         if mr:
             read = fmt_num(mr.mesos) if mr.mesos is not None else "nothing (waiting for a clear look)"
             shots.append((mr.mesos_image, mr.mesos_boxes, f"Mesos. Read: {read}"))
+        look = self.reader.pickup_look
+        if look:
+            picked = []
+            if look.get("exp") is not None:
+                picked.append(f"+{fmt_num(look['exp'])} EXP")
+            if look.get("mesos") is not None:
+                picked.append(f"+{fmt_num(look['mesos'])} mesos")
+            age = max(0, int(time.monotonic() - look["at"]))
+            when = f"   ({age}s ago)" if age >= 2 else ""
+            shots.append((look["image"], [], f"Pickup notifications. Read: {', '.join(picked) or 'nothing'}{when}"))
         if r:
             shots.append(self._class_line())
             look = self.reader.map_look

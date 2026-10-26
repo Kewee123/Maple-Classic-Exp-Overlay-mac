@@ -76,7 +76,7 @@ Within a few seconds it shows your level and how much EXP you have. The per-hour
 | **Reset** | Starts a new session from zero, and looks for the minimap, inventory and party list again (handy after moving them around) |
 | **Don't log** | Keeps the current run out of the log, for example while you're testing a map or waiting for your party. Everything is still shown on screen. It turns itself off when you leave the map or stop getting EXP, so your next run is logged as usual. |
 | **Select area** | Lets you drag a box around the EXP numbers, if it ever can't find them. The button then turns into **Follow game**, which goes back to finding them by itself. |
-| **View capture** | Shows exactly what it read from your screen |
+| **View capture** | Shows exactly what it read from your screen, including the pickup notifications, and how the numbers add up |
 | **PQ mode** | For party quests (in the **...** menu). See [PQ mode](#pq-mode) below. |
 | **...** | Menu: **Choose application** (Mac), **Select area**, **View capture**, **PQ mode**. |
 | **Share** | Makes a picture of your session (EXP/hr, mesos/hr, the map) and copies it, to paste into Discord. See [Sharing your session](#sharing-your-session) below. |
@@ -162,7 +162,7 @@ Every version is tested against thousands of misread numbers, and against real s
 
 **Did it close by itself?** Open it again: it says it closed unexpectedly, and offers to save what happened. You can also do it any time in ⚙ with **Save logs**: it makes one zip (in the `logs` folder of the data folder) with `overlay.log` (what it was doing), `errors.log` and `crash.log` (where it was when it closed). Send that zip, or attach it to a bug report.
 
-**Click View capture first.** It shows exactly what the overlay read, with a box around every digit:
+**Click View capture first.** It shows exactly what the overlay read, with a box around every digit, the last translucent EXP/mesos pickup notifications, and a **How it adds up** summary (current EXP and %, the level's requirement, session totals, the 5/15/30/60-minute gains, mesos and the log/run timers):
 
 ![View capture](docs/screenshot-capture.png)
 
@@ -181,7 +181,7 @@ Every version is tested against thousands of misread numbers, and against real s
 
 **To report a bug,** click **Report a bug** in ⚙ (or **Something's wrong? Report a bug** in View capture):
 1. Your browser opens a bug report on GitHub, already filled in with your version and what the overlay was reading. Nothing personal is included, and nothing is sent until you click Submit.
-2. A folder opens with **bug-report.png** (what the overlay read: the EXP bar, mesos, class and map name) and **bug-report.txt** (how it's doing: your screen and game window size, what it found, what it last said, and any errors). Drag both into the report. Neither has your character name or your computer user name. It also asks if you want to save a small picture of the whole game window: that one can show chat and names, so it's saved only if you say yes, and you choose whether to attach it.
+2. A folder opens with **bug-report.png** (what the overlay read: the EXP bar, mesos, class, map name and the last pickup notifications) and **bug-report.txt** (how it's doing: your screen and game window size, what it found, what it last said, and any errors). Drag both into the report. Neither has your character name or your computer user name. It also asks if you want to save a small picture of the whole game window: that one can show chat and names, so it's saved only if you say yes, and you choose whether to attach it.
 3. Write a sentence about what went wrong, and click **Submit**. (You need a free GitHub account.)
 
 ## Is it safe? Is it allowed?

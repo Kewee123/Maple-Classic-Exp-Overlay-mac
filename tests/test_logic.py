@@ -786,6 +786,7 @@ class _MapReader:
     def __init__(self):
         self.job = None
         self.rechecks = 0
+        self.pickup_look = None
 
     def request_map(self):
         pass
@@ -806,6 +807,7 @@ def fake_app():
     a.pq_mode, a.skip_log = False, False
     a.map_name = a.map_read = "Rocky Road II"
     a.level, a.party, a.job = 30, 1, "Bandit"
+    a.last_capture = a.last_mesos = None
     a._map_seen, a._map_rechecks = ("Rocky Road II", 0), 0
     a.note = a.found_at = a.level_up_at = a.died_at = None
     a.rejected, a.last_logged = 0, None
@@ -836,6 +838,30 @@ app._handle(reading("Rocky Road III"))                 # twice in a row: it real
 app._handle(reading("Rocky Road III"))
 check("a map name read twice in a row counts as a new map",
       app.session.waiting == "map" and app.map_name == "Rocky Road III")
+
+app = fake_app()
+app.reader.pickup_look = {"image": None, "texts": ["You received EXP (+13)"],
+                          "exp": 13, "mesos": 24, "at": clock[0]}
+check("View capture shows the last pickup notification",
+      any("Pickup notifications" in text and "+13 EXP" in text and "+24 mesos" in text
+          for _image, _boxes, text in app._look_shots()))
+
+app.tracker.exp, app.tracker.pct, app.tracker.req = 68601, 71.68, 95700
+app.tracker.gained, app.tracker.levels = 1000, 1
+app.meso.value, app.meso.gained = 1234, 56
+text = app._capture_calc_text()
+check("View capture explains the calculation",
+      "68,601" in text and "71.68%" in text and "95,700" in text
+      and "+1,000 EXP" in text and "1,234" in text and "Pickup credit" in text
+      and "+13 EXP" in text and "+24 mesos" in text)
+
+reader = m.ScreenReader(None)
+reader._remember_pickup([(None, 24), (13, None), (None, None)],
+                        ["You have gained mesos (+24)", "You received EXP (+13)", ""],
+                        [m.np.zeros((10, 100, 3), m.np.uint8) for _ in range(3)], 13, 24, 123.0)
+check("View capture keeps the pickup notification picture",
+      reader.pickup_look["image"].shape == (24, 100, 3) and reader.pickup_look["exp"] == 13
+      and reader.pickup_look["mesos"] == 24 and len(reader.pickup_look["texts"]) == 2)
 
 app = fake_app()
 app.skip_log = True

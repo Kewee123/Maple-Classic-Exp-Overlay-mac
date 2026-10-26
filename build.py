@@ -8,7 +8,9 @@ adds Tesseract OCR (for reading map names), and zips it up for a GitHub release.
 
 On a Mac it needs Tesseract and dylibbundler from Homebrew (brew install tesseract
 dylibbundler): dylibbundler copies the libraries Tesseract needs into the app, so it runs
-on Macs without Homebrew. The app is signed ad hoc (not by a registered developer).
+on Macs without Homebrew. Set MAC_SIGN_IDENTITY to sign with a stable certificate, so macOS
+keeps the app's Screen Recording permission across updates; without it the app is signed ad
+hoc (not by a registered developer) and macOS treats each build as a new app.
 
 Needs Python with the packages from requirements.txt plus PyInstaller, and Tesseract
 installed (https://github.com/UB-Mannheim/tesseract/wiki):
@@ -43,6 +45,10 @@ TESSERACT = Path(os.environ.get("TESSERACT_DIR", r"C:\Program Files\Tesseract-OC
 BUILD, RELEASE = ROOT / "build", ROOT / "release"
 MAC = sys.platform == "darwin"
 MAC_MIN = (14, 0)          # the oldest macOS the Mac app runs on: no part of it may need a newer one
+# The certificate to sign the Mac app with ("-" is ad hoc). The same identity on every build
+# keeps macOS's Screen Recording permission across updates; an ad-hoc build is a new app to
+# macOS, so it asks again after each one. See README > For developers.
+MAC_SIGN_IDENTITY = os.environ.get("MAC_SIGN_IDENTITY", "").strip() or "-"
 
 # Parts of the libraries that are never used, left out to make the download smaller:
 # OpenCV's video player (the screen is read with mss, never from a video) and Pillow's
@@ -154,12 +160,18 @@ def main_mac():
         if (prefix / notice).is_file():
             shutil.copy2(prefix / notice, data.parent / f"{notice}.txt")
 
-    # Every program and library ad hoc signed again (copying and fixing them broke their
+    # Every program and library is signed again (copying and fixing them broke their
     # signatures; Apple Silicon Macs won't run unsigned code), then the whole app.
     for f in [tess / "tesseract", *sorted((tess / "libs").glob("*"))]:
-        subprocess.run(["codesign", "--force", "--sign", "-", str(f)], check=True)
-    subprocess.run(["codesign", "--force", "--deep", "--sign", "-", str(app)], check=True)
+        sign_mac(f, MAC_SIGN_IDENTITY)
+    sign_mac(app, MAC_SIGN_IDENTITY, deep=True)
     check_mac_app(app)
+    if MAC_SIGN_IDENTITY == "-":
+        print("Signed ad hoc: macOS treats each new build as a new app, so it asks for Screen "
+              "Recording again after every update.")
+    else:
+        print(f'Signed with "{MAC_SIGN_IDENTITY}": Screen Recording permission survives updates '
+              "(macOS still re-confirms it periodically, by design).")
 
     folder = RELEASE / "mac" / NAME
     shutil.rmtree(folder.parent, ignore_errors=True)
@@ -172,6 +184,20 @@ def main_mac():
     subprocess.run(["ditto", "-c", "-k", "--sequesterRsrc", "--keepParent", str(folder), str(zip_path)], check=True)
     shutil.rmtree(folder.parent)
     print(f"\nDone: {zip_path} ({zip_path.stat().st_size / 1e6:.0f} MB)")
+
+
+def sign_mac(path, identity, deep=False):
+    """Signs one of the app's programs or the app itself. A failure usually means the identity
+    from MAC_SIGN_IDENTITY isn't in the keychain (or its private key isn't usable)."""
+    args = ["codesign", "--force", "--sign", identity]
+    if deep:
+        args.append("--deep")
+    args.append(str(path))
+    try:
+        subprocess.run(args, check=True)
+    except subprocess.CalledProcessError:
+        sys.exit(f'Could not sign {path} with "{identity}". Is that identity in your keychain? '
+                 "Open Keychain Access > My Certificates, or unset MAC_SIGN_IDENTITY to sign ad hoc.")
 
 
 def check_mac_app(app):

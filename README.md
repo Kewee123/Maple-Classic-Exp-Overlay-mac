@@ -47,7 +47,7 @@ This fork releases the **Mac app** only. You need a Mac with Apple Silicon (M1 o
 4. Open it. macOS will say it can't check the app for malware, because it isn't from a registered Apple developer: click **Done**, then open **System Settings > Privacy & Security**, scroll down, and click **Open Anyway** next to Maple Classic Exp Overlay. You only need to do this once.
 5. It asks for permission to record your screen (that's how it reads the game). Click **Open System Settings**, switch **Maple Classic Exp Overlay** on under **Screen Recording**, then open the app again.
 
-After an update, macOS may ask for Screen Recording again: switch it off and on for the new version. **Hotkeys aren't available in the Mac app yet**, so use the buttons. If automatic window detection picks the wrong window, use **...** > **Choose application** (see below).
+On macOS 15 and later, macOS re-confirms screen recording about once a month, so that prompt can come back even though the toggle is on; click **Allow**. After an update, if it asks again and the toggle for the new version is off, switch it off and on. **Hotkeys aren't available in the Mac app yet**, so use the buttons. If automatic window detection picks the wrong window, use **...** > **Choose application** (see below).
 
 ## How to use it
 
@@ -204,6 +204,7 @@ Downloads on the [Releases page](../../releases) are built by GitHub from the co
 
 - installs exact package files, each checked against its SHA-256 ([requirements-build-mac.txt](requirements-build-mac.txt)),
 - runs all the tests,
+- signs the app with the project's own certificate when one is configured (so macOS keeps Screen Recording permission across updates),
 - records a signed **attestation**: which workflow built which file, from which commit,
 - puts the zip's **SHA-256** on the release page (`SHA256SUMS.txt`).
 
@@ -221,7 +222,7 @@ The same zip is also kept on the page of the build that made it (Actions, the ru
 
 ### Code signing policy
 
-The Mac app is **signed ad hoc, not notarized by Apple**, so macOS asks you to allow it the first time (see [How to install](#how-to-install)). The Build workflow builds it from this repository; only builds made by that workflow are attested.
+The Mac app is **signed locally (ad hoc, or with the project's own certificate when configured) and not notarized by Apple**, so macOS asks you to allow it the first time (see [How to install](#how-to-install)). The Build workflow builds it from this repository; only builds made by that workflow are attested.
 
 - Committers and reviewers: [Kewee123](https://github.com/Kewee123)
 - Approvers: [Kewee123](https://github.com/Kewee123)
@@ -235,7 +236,7 @@ This is a beta, and I'm still adding features and fixing things.
 
 **When a new version is out,** the overlay tells you when you start it, and shows what's new. Click **Get the update** to open the download page, or **Not now** / **Skip this version** if you'd rather wait.
 
-**To update:** click **Update now** in the window that says a new version is out (from 0.9.13-beta on). It downloads the new version from this page, checks its SHA-256, and restarts the overlay as the new version; nothing is installed if the check fails. On a Mac, macOS may ask for Screen Recording again afterwards. Or, as before, download the newest zip from the [download page](../../releases/latest) and use it instead of the old folder. Your log, notes and settings stay, because they're saved separately (⚙ → **Open data folder** shows where).
+**To update:** click **Update now** in the window that says a new version is out (from 0.9.13-beta on). It downloads the new version from this page, checks its SHA-256, and restarts the overlay as the new version; nothing is installed if the check fails. Screen Recording permission survives updates when the release is signed with the same identity, but macOS may still re-confirm it periodically. If macOS asks and the toggle is off, switch it off and on for the new version. Or, as before, download the newest zip from the [download page](../../releases/latest) and use it instead of the old folder. Your log, notes and settings stay, because they're saved separately (⚙ → **Open data folder** shows where).
 
 **To remove it:** drag the app to the Trash. To also delete your log and settings, delete the folder that **Open data folder** opens.
 
@@ -268,7 +269,28 @@ python3 -m pip install --require-hashes -r requirements-build-mac.txt
 python3 build.py
 ```
 
-It includes its own copy of Tesseract and the libraries it needs, signed ad hoc.
+It includes its own copy of Tesseract and the libraries it needs.
+
+**Keep Screen Recording permission across updates (Mac).** macOS ties the permission to the app's code signature. An ad-hoc build gets a new identity every time, so macOS treats every update as a new app and asks again. Sign every build with the same certificate instead — a free self-signed one is enough:
+
+1. In **Keychain Access** → **Certificate Assistant** → **Create a Certificate…**, use **Identity Type: Self Signed Root** and **Certificate Type: Code Signing**. Name it, for example, `Maple Exp Signing`.
+2. Select it under **My Certificates**, then export it with its private key as a `.p12`.
+3. Build with `MAC_SIGN_IDENTITY` set to its name:
+
+   ```
+   MAC_SIGN_IDENTITY="Maple Exp Signing" python3 build.py
+   ```
+
+   The first time, macOS may ask to let `codesign` use the key; click **Always Allow**.
+
+4. For GitHub releases, add these **Actions secrets** to the repository:
+   - `MACOS_CERT_P12`: the `.p12`, base64-encoded (`base64 -i cert.p12 | pbcopy`)
+   - `MACOS_CERT_PASSWORD`: its export password
+   - `MACOS_CERT_IDENTITY` (optional): the certificate's name, if the workflow can't find it
+
+   The Build workflow imports the certificate and signs the app with it. Without these secrets it still builds, ad hoc.
+
+Keep the private key secret, and use the same identity for local and GitHub builds if you want them to share the permission. The certificate doesn't need to be trusted by macOS (Gatekeeper still asks the first time), and the app remains unnotarized. macOS 15 and later still re-confirm Screen Recording periodically; that prompt is macOS's own and can't be disabled by the app.
 
 **Tests use their own data folder:** with `MAPLE_EXP_DATA` set, the overlay keeps its log and settings there, away from your real ones.
 

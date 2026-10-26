@@ -136,6 +136,57 @@ jobs:
           echo "TESSERACT_BIN=$out/bin/tesseract" >> "$GITHUB_ENV"
           echo "TESSDATA_DIR=$(brew --prefix tesseract)/share/tessdata" >> "$GITHUB_ENV"
 
+      - name: Check for the Mac signing certificate
+        id: signing
+        shell: bash
+        env:
+          CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+        run: |
+          if [ -n "$CERT_P12" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "No MACOS_CERT_P12 secret: signing ad hoc (macOS will ask for Screen Recording after each update)."
+          fi
+
+      - name: Import the Mac signing certificate
+        if: steps.signing.outputs.present == 'true'
+        shell: bash
+        env:
+          CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          CERT_IDENTITY: ${{ secrets.MACOS_CERT_IDENTITY }}
+        run: |
+          set -euo pipefail
+          trap 'rm -f "$RUNNER_TEMP/signing.p12"' EXIT
+          keychain="$RUNNER_TEMP/build-signing.keychain-db"
+          security create-keychain -p actions "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p actions "$keychain"
+          python - "$RUNNER_TEMP/signing.p12" <<'PY'
+          import base64, os, sys
+          with open(sys.argv[1], "wb") as f:
+              f.write(base64.b64decode(os.environ["CERT_P12"]))
+          PY
+          security import "$RUNNER_TEMP/signing.p12" -k "$keychain" -P "$CERT_PASSWORD" \
+            -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k actions "$keychain" >/dev/null
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          security default-keychain -s "$keychain"
+          rm -f "$RUNNER_TEMP/signing.p12"
+          identity="${CERT_IDENTITY:-$(security find-identity -p codesigning "$keychain" | awk -F'"' '/"/ {print $2; exit}')}"
+          if [ -z "$identity" ]; then
+            echo "::error::The certificate was imported but no code-signing identity was found. Set MACOS_CERT_IDENTITY to its name."
+            security find-identity -p codesigning "$keychain"
+            exit 1
+          fi
+          echo "Signing as: $identity"
+          echo "MAC_SIGN_IDENTITY=$identity" >> "$GITHUB_ENV"
+          # Make sure the identity can actually sign before the build starts.
+          cp /bin/echo "$RUNNER_TEMP/signing-test"
+          codesign --force --sign "$identity" --keychain "$keychain" "$RUNNER_TEMP/signing-test"
+          codesign --verify --strict "$RUNNER_TEMP/signing-test"
+
       - name: Build the Mac app
         run: python build.py
 

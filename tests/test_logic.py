@@ -532,6 +532,26 @@ entry = log.tick(60, "Rocky Road II", 27, force=True)
 check("stopping early flushes the current session to the log",
       entry is not None and entry["exp"] == 200 and entry["seconds"] == 60)
 
+log, _ = new_log()
+log.gain(0, 100)
+log.gain(60, 100)
+log.gain(110, 100)
+log.pause(120)
+entry = log.tick(300, "Rocky Road II", 27, force=True)      # Stop after Pause
+check("stopping after a pause still saves the session, without the pause time",
+      entry is not None and entry["exp"] == 300 and entry["seconds"] == 120)
+
+log, _ = new_log()
+log.gain(0, 100)
+log.gain(60, 100)
+log.pause(70)
+log.resume(370)
+log.gain(370, 100)
+log.gain(420, 100)
+entry = log.tick(430, "Rocky Road II", 27, force=True)
+check("resuming after a pause carries the stretch on, without the paused time",
+      entry is not None and entry["exp"] == 400 and entry["seconds"] == 130)
+
 # ---- EXP outliers
 def exp_tracker(e=47850, p=50.0):
     tr = m.ExpTracker(); tr.start()
@@ -661,6 +681,7 @@ EXP0 = 60000
 def session(gap=15):
     s = m.Session(gap)
     s.map_seen("Rocky Road II")
+    s.map = "Rocky Road II"                             # (as a Start on this map would have it)
     for _ in range(2):                                  # learns the level (Lv 30)
         s.observe([(EXP0, round(EXP0 / 95700 * 100, 2))], True, clock[0])
     return s
@@ -708,6 +729,118 @@ check(f"EXP on a different map starts from zero, still knowing the level "
 s.pause()
 gains(s, 6.5)
 check("after pressing Pause, it stays paused", not s.exp.running and s.on is False)
+s = m.Session(15)
+s.map_seen("Old Map")                                # seen before Start (e.g. while stopped)
+s.start(clock[0])
+check("a fresh Start doesn't trust the map seen before it", s.map is None)
+s.map_seen("New Map")
+check("the first map read after Start sets it without pausing", s.map == "New Map" and s.waiting is None)
+s.pause()
+s.start(clock[0] + 1)
+check("a Resume keeps the map", s.map == "New Map")
+
+# The buttons: Start, Pause, then Stop after a break must still save the session.
+class _Sink:
+    def __init__(self):
+        self.text = ""
+
+    def set(self, text):
+        self.text = text
+
+    def add(self, _text):
+        pass
+
+
+class _Reader:
+    def request_map(self):
+        pass
+
+
+app = m.App.__new__(m.App)                            # no window: just the tracking parts
+app.session = m.Session(15)
+app.tracker, app.meso = app.session.exp, app.session.meso
+app._session_started = False
+app.autolog, _ = new_log()
+app.recent, app.status = _Sink(), _Sink()
+app.reader = _Reader()
+app.pq_mode, app.skip_log = False, False
+app.map_name, app.map_read, app.level, app.party, app.job = "Rocky Road II", "Rocky Road II", 30, 1, "Bandit"
+app._set_start = lambda _text: None
+app._show_skip_log = lambda: None
+app._log_map = lambda: app.map_name
+app._fill_log = lambda: None
+app.toggle()                                          # Start
+app.autolog.gain(clock[0], 100)
+clock[0] += 60
+app.autolog.gain(clock[0], 100)
+clock[0] += 10
+app.toggle()                                          # Pause
+clock[0] += 600                                       # a 10-minute break
+app.stop()                                            # Stop after Pause
+check("Stop after Pause saves the session from the buttons",
+      len(app.autolog.entries) == 1 and app.autolog.entries[0]["exp"] == 200
+      and abs(app.autolog.entries[0]["seconds"] - 70) < 0.1)
+
+
+class _MapReader:
+    def __init__(self):
+        self.job = None
+        self.rechecks = 0
+
+    def request_map(self):
+        pass
+
+    def recheck_map(self):
+        self.rechecks += 1
+
+
+def fake_app():
+    a = m.App.__new__(m.App)
+    a.session = m.Session(15)
+    a.tracker, a.meso = a.session.exp, a.session.meso
+    a._session_started = True
+    a.autolog, _ = new_log()
+    a.recent, a.status = _Sink(), _Sink()
+    a.reader = _MapReader()
+    a.cfg = {}
+    a.pq_mode, a.skip_log = False, False
+    a.map_name = a.map_read = "Rocky Road II"
+    a.level, a.party, a.job = 30, 1, "Bandit"
+    a._map_seen, a._map_rechecks = ("Rocky Road II", 0), 0
+    a.note = a.found_at = a.level_up_at = a.died_at = None
+    a.rejected, a.last_logged = 0, None
+    a._set_start = lambda _text: None
+    a._show_skip_log = lambda: None
+    a._log_map = lambda: a.map_name
+    a._fill_log = lambda: None
+    a.session.map, a.session.here = "Rocky Road II", "Rocky Road II"
+    a.session.start(clock[0])
+    return a
+
+
+def reading(map_name):
+    return type("Reading", (), dict(
+        image=None, mesos_image=None, mesos_at=None, mesos_pickup=None, mesos=None,
+        exp_pickup=None, party=None, map=map_name, note=None, candidates=None,
+        where="Tracking your EXP."))()
+
+
+app = fake_app()
+app._handle(reading("Rocky Road III"))                 # one read: could be a misread
+check("one different map read doesn't count as leaving the map",
+      app.session.waiting is None and app.reader.rechecks == 1 and app.map_name == "Rocky Road II")
+app._handle(reading("Rocky Road II"))                  # the next look reads it right again
+check("...and reading the same map again keeps tracking",
+      app.session.waiting is None and app.map_name == "Rocky Road II")
+app._handle(reading("Rocky Road III"))                 # twice in a row: it really changed
+app._handle(reading("Rocky Road III"))
+check("a map name read twice in a row counts as a new map",
+      app.session.waiting == "map" and app.map_name == "Rocky Road III")
+
+app = fake_app()
+app.skip_log = True
+app.stop()
+check("Stop turns 'Don't log' off for the next session", app.skip_log is False)
 s = session(gap=60)
 s.start(clock[0])
 gains(s, 9.5)

@@ -1217,6 +1217,12 @@ class ScreenReader:
         """Read the map name on the next look, even if it doesn't seem to have changed."""
         self.next_map_search, self.next_map_read, self.map_unread = 0.0, 0.0, True
 
+    def recheck_map(self):
+        """Read the map name again in a moment, to confirm a possible change (one misread
+        shouldn't count as leaving the map)."""
+        self.map_unread = True
+        self.next_map_read = time.monotonic() + 1.0
+
     def look_again(self):
         """Forget where everything was (EXP bar, minimap, inventory, party list) and look
         for it all again. Done by the reading thread itself, at its next look."""
@@ -2114,7 +2120,9 @@ class Session:
 
     def start(self, now):
         self.on, self.waiting, self.last_gain = True, None, now
-        self.map = self.map or self.here
+        # A fresh Start takes its map from the first read after it: the last map seen before
+        # Start may be out of date (e.g. you changed maps while it was stopped). A Resume
+        # keeps the map it was on.
         self.exp.start()
 
     def pause(self):
@@ -2427,6 +2435,32 @@ class AutoLog:
         self.block_exp = 0
         self.block_first = 0                             # the gain that started this stretch
         self.run = None                                  # the 15-minute run going on, if any
+        self._paused_at = None                           # a manual pause froze the clock here
+
+    def pause(self, now):
+        """Freezes the log's clock for a manual pause, so Stop can still save what was farmed
+        before it and Resume carries on without the paused time."""
+        if self._paused_at is None:
+            self._paused_at = now
+
+    def resume(self, now):
+        """Carries on after a manual pause, as if the paused time never passed."""
+        if self._paused_at is None:
+            return
+        shift = max(0.0, now - self._paused_at)
+        if self.start is not None:
+            self.start += shift
+        if self.last_gain is not None:
+            self.last_gain += shift
+        if self.run and self.run.get("start") is not None:
+            self.run["start"] += shift
+        if self.meso0 is not None:
+            self.meso0 = (self.meso0[0], self.meso0[1] + shift)
+        self._paused_at = None
+
+    def _now(self, now):
+        """The time the log's clock should use: frozen while a manual pause is on."""
+        return self._paused_at if self._paused_at is not None else now
 
     def gain(self, now, amount):
         if amount > 0:
@@ -2450,6 +2484,7 @@ class AutoLog:
         the MesoTracker, or None; job is the class; map_read the map name exactly as read;
         gap, seconds without EXP that end a stretch, if not the usual (PQ mode).
         Returns the entry when one was logged."""
+        now = self._now(now)
         if self.start is None:
             return None
         if now - self.last_gain > (gap or self.gap):
@@ -2514,6 +2549,7 @@ class AutoLog:
     def run_progress(self, now):
         """Seconds into the 15-minute run going on, or None."""
         r = self.run
+        now = self._now(now)
         return None if r is None or r["map"] is None else max(0.0, now - r["start"])
 
     def runs_done(self, map_name, party, job, day=None):
@@ -2523,6 +2559,7 @@ class AutoLog:
                    and r.get("party") == party and r.get("class") == job and self.sealed(r, _SEALED_RUN))
 
     def seconds_left(self, now):
+        now = self._now(now)
         return None if self.start is None else max(0.0, LOG_BLOCK - (now - self.start))
 
     def _add(self, map_name, level, party, exp, seconds, mesos, meso_seconds, job=None, map_read=None):
@@ -2807,8 +2844,10 @@ class App:
             self.reader.saved_mesos = tuple(saved)
         self.session = Session(self.cfg["gap_seconds"])
         self.tracker, self.meso = self.session.exp, self.session.meso
+        self._session_started = False       # Start was pressed and Stop/Reset wasn't
         self.party = 1
         self._party_seen = (None, 0)
+        self._map_seen, self._map_rechecks = (None, 0), 0
         self.last_mesos = None
         self.rejected = 0
         self.started, self.cpu0 = time.monotonic(), time.process_time()
@@ -3364,7 +3403,8 @@ class App:
         if self.skip_log:
             return f"{where}\nNot logging this run."
         if not self.session.on:
-            return f"{where}\nPress Start to log EXP/hr here."
+            return (f"{where}\nPaused. Press Resume to carry on." if self.tracker.elapsed() > 0
+                    else f"{where}\nPress Start to log EXP/hr here.")
         if self.session.waiting:
             return f"{where}\nPaused. Logging carries on at your next EXP gain."
         left = self.autolog.seconds_left(now)
@@ -3875,12 +3915,25 @@ class App:
         if self.reader.job:
             self.job = self.reader.job
         if r.map:
-            self.map_read = r.map                       # as read (kept on record if renamed)
             # A slightly misread name of the map you're on still counts as that map.
-            self.map_name = self.autolog.canonical(r.map, also=(self.map_name, self.session.map))
-            waiting = self.session.waiting
-            self.session.map_seen(self.map_name)
-            self._after_pause_check(waiting)
+            name = self.autolog.canonical(r.map, also=(self.map_name, self.session.map))
+            if self.map_name is None or name == self.map_name:
+                self._map_seen, self._map_rechecks = (name, 0), 0
+                self._accept_map(name, r.map)
+            else:
+                # One read that doesn't match may be a misread: read it again before calling
+                # it a new map (a false change would pause, and restart the log's 5 minutes).
+                seen, n = self._map_seen
+                n = n + 1 if name == seen else 1
+                self._map_seen = (name, n)
+                if n >= 2:
+                    self._map_seen, self._map_rechecks = (name, 0), 0
+                    self._accept_map(name, r.map)
+                elif self._map_rechecks < 2:
+                    self._map_rechecks += 1
+                    self.reader.recheck_map()
+                else:
+                    self._map_seen, self._map_rechecks = (None, 0), 0
         self.note = r.note
         if r.candidates:
             if self.found_at is None or t.req is not None:
@@ -3907,6 +3960,16 @@ class App:
         self.recent.add(status)
         self.level = level_for_req(t.req) or self.level
         self._log_tick(now)
+
+    def _accept_map(self, name, map_read):
+        """The map name was read again unchanged, or twice in a row: use it from now on."""
+        if self.map_name and name != self.map_name and not self.pq_mode:
+            log_activity(f"Map changed: {self.map_name} -> {name}")
+        self.map_read = map_read                       # as read (kept on record if renamed)
+        self.map_name = name
+        waiting = self.session.waiting
+        self.session.map_seen(name)
+        self._after_pause_check(waiting)
 
     def _status_for(self, note):
         """What the status line says while the EXP bar is being read (details: View capture)."""
@@ -3940,7 +4003,7 @@ class App:
 
     def _log_tick(self, now, force=False):
         if (not self.tracker.running and not force) or self.skip_log:
-            return
+            return None
         m = self.meso
         mesos = (m.gained, m.seen_at) if m.value is not None and now - m.seen_at <= 30 else None
         pq = self.pq_mode
@@ -3950,6 +4013,7 @@ class App:
         if entry:
             self.last_logged = now
             self._fill_log()
+        return entry
 
     def _refresh(self):
         try:
@@ -4037,27 +4101,34 @@ class App:
         self.status.set(self.hotkey_note[0])
 
     def toggle(self):
+        now = time.monotonic()
         if self.session.on:                     # (also while it's paused by itself)
             self.recent.add("You paused")
             self.session.pause()
+            self.autolog.pause(now)             # keep what's been farmed: Stop can still save it
             self._set_start("Resume")
         else:
             self.recent.add("You pressed Start")
-            self.session.start(time.monotonic())
+            self._session_started = True
+            self.autolog.resume(now)            # carry on where a manual pause left off
+            self.session.start(now)
             self.reader.request_map()           # read the map name now
             self._set_start("Pause")
-        self.autolog.reset_clock()
         if self.tracker.exp is not None:
             self.status.set(self._status_for(""))   # right away, not at the next read
 
     def stop(self):
-        if not self.session.on and self.tracker.elapsed() <= 0:
+        if not self._session_started and not self.session.on:
             return
-        self._log_tick(time.monotonic(), force=True)
+        self.recent.add("You stopped")
+        entry = self._log_tick(time.monotonic(), force=True)
+        self._session_started = False
         self.session.reset()
         self.autolog.reset_clock()
+        self.skip_log = False               # Stop ends the run: the next one is logged again
+        self._show_skip_log()
         self._set_start("Start")
-        self.status.set("Stopped. The session was saved to the log.")
+        self.status.set("Stopped. The session was saved to the log." if entry else "Stopped.")
 
     def _set_start(self, text):
         """The Start button: gold when pressing it starts something, quiet while it's running."""
@@ -4068,12 +4139,14 @@ class App:
     def reset(self):
         self.session.reset()
         self.autolog.reset_clock()
+        self._session_started = False
         self.skip_log = False
         self._show_skip_log()
         self._set_start("Start")
         # Also look for the minimap, inventory and party list again (e.g. after moving them).
         self.reader.look_again()
         self.map_name, self.party, self._party_seen = None, 1, (None, 0)
+        self._map_seen, self._map_rechecks = (None, 0), 0
         self.cfg.pop("mesos_box", None)
         save_config(self.cfg)
         self.status.set("Reset. Looking for the map name, inventory and party list again...")
@@ -4089,16 +4162,20 @@ class App:
         self.view.logging.set(not self.skip_log, "Not logging" if self.skip_log else "Log this run")
 
     def _after_pause_check(self, waiting_before):
-        """When the run ends (tracking pauses by itself), "Don't log" turns off again, so
-        the next run is logged. (Pressed while already paused, it's for the next run.)"""
-        if self.skip_log and waiting_before is None and self.session.waiting:
-            self.skip_log = False
-            self._show_skip_log()
+        """When tracking pauses by itself (a break), the log's 5-minute stretch starts over,
+        and "Don't log" turns off again, so the next run is logged. (Pressed while already
+        paused, it's for the next run.)"""
+        if waiting_before is None and self.session.waiting:
+            self.autolog.reset_clock()          # a break: the stretch (and its run) starts over
+            if self.skip_log:
+                self.skip_log = False
+                self._show_skip_log()
 
     def _new_source(self):
         # New place to read from -> new baseline, but keep the session totals.
         self.tracker.exp = self.tracker.pct = None
         self.tracker._pending = self.tracker._pending_lvl = None
+        self._map_seen, self._map_rechecks = (None, 0), 0
         self.autolog.reset_clock()
         save_config(self.cfg)
 

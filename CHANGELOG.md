@@ -17,6 +17,7 @@
 
 **Fixed**
 - The **...** menu now opens beside the 3-dots button, not under the overlay.
+- **Start / Pause / Stop and the log:** Pause no longer throws away the 5-minute stretch in progress, Stop after Pause still saves it, and a single misread map name no longer counts as changing maps (which paused tracking and restarted the log's timer).
 
 ## 0.9.12-beta
 

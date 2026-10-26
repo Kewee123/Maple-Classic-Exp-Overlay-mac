@@ -71,8 +71,8 @@ Within a few seconds it shows your level and how much EXP you have. The per-hour
 
 | Button | What it does |
 |---|---|
-| **Start / Pause / Resume** | Starts tracking. **Pause** stops it until you press **Resume**. |
-| **Stop** | Ends the session and saves it to the log right away. |
+| **Start / Pause / Resume** | Starts tracking. **Pause** stops it until you press **Resume**; what you farmed before the pause is kept for the log. |
+| **Stop** | Ends the session and saves it to the log right away (also after a Pause). |
 | **Reset** | Starts a new session from zero, and looks for the minimap, inventory and party list again (handy after moving them around) |
 | **Don't log** | Keeps the current run out of the log, for example while you're testing a map or waiting for your party. Everything is still shown on screen. It turns itself off when you leave the map or stop getting EXP, so your next run is logged as usual. |
 | **Select area** | Lets you drag a box around the EXP numbers, if it ever can't find them. The button then turns into **Follow game**, which goes back to finding them by itself. |
@@ -118,9 +118,10 @@ Click **>** at the top right of the overlay to open the log. It's the table on t
 - **Every 5 more minutes** it updates that line, so the numbers get more accurate the longer you farm.
 - **Time** shows how long a line is based on. It grows by 5 minutes with each update.
 - **Class** is read from the status bar (never your character's name). Different classes get separate lines.
-- **15-minute runs:** under the log it also counts toward 15 minutes of non-stop farming on one map with the same party size ("15-min run: 7 of 15 min"). A level-up doesn't stop it; a break, a new map or a new party size starts it over. Finished runs are saved separately in your log file.
+- **15-minute runs:** under the log it also counts toward 15 minutes of non-stop farming on one map with the same party size ("15-min run: 7 of 15 min"). A level-up doesn't stop it; a break (no EXP long enough to pause by itself), a new map or a new party size starts it over. Pausing by hand keeps it, and the paused time doesn't count. Finished runs are saved separately in your log file.
 - **Greyed-out lines** were changed outside the overlay. Every line the overlay writes is sealed, so a line edited or added by hand is easy to spot. Deleting a line, or renaming a map in the overlay, is fine.
-- **Taking a break restarts the 5-minute timer.** A break means no EXP for 15 seconds (you can change this in ⚙). Changing maps or party size restarts it too.
+- **Taking a break restarts the 5-minute timer.** A break means no EXP for 15 seconds (you can change this in ⚙). Changing maps or party size restarts it too. **Pausing by hand doesn't throw the stretch away**: it carries on when you press Resume, and the paused time doesn't count. **Stop** saves it immediately.
+- A single misread map name doesn't count as changing maps: the overlay reads the name again before it resets.
 - **Don't want a run logged?** Press **Don't log**. It switches back on its own when that run ends.
 - **Solo** means just you. **4ppl** means a party of 4.
 - **?** under Mesos/hr means no mesos were seen yet: no pickup notifications, and no inventory total.
